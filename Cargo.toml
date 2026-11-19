@@ -1,0 +1,13 @@
+[package]
+name = "htmx-rust"
+version = "0.0.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Server-rendered Rust web apps with htmx and maud: routing, URL as state, components"
+repository = "https://github.com/funkode-io/htmx-rust"
+homepage = "https://github.com/funkode-io/htmx-rust"
+readme = "README.md"
+keywords = ["htmx", "maud", "ssr", "web", "axum"]
+categories = ["web-programming"]
+
+[dependencies]
