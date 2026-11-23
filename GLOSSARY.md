@@ -23,6 +23,10 @@ A view shown directly in the layout's outlet.
 A view shown in the outlet of a page or of another section.
 _Avoid_: Tab, subpage
 
+**Action**:
+An unsafe request a form sends: a change to a resource, such as creating or archiving a catalog.
+_Avoid_: Mutation, command, handler
+
 **Region**:
 A part of the interface that is refreshed on its own, without changing the path. Its state lives in the query string, and it can be reused on any page or section.
 _Avoid_: Fragment, partial, widget
