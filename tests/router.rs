@@ -20,7 +20,7 @@ struct App {
 struct Document;
 
 impl Layout<App> for Document {
-    async fn render(app: &App, outlet: Outlet, title: &str) -> Html {
+    async fn render(app: &App, outlet: Outlet, title: &str) -> impl Into<Html> {
         Html::trusted(format!(
             "<title>{title} - {}</title><main id=\"{}\">{}</main>",
             app.name,
@@ -37,7 +37,7 @@ impl View<App> for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(app: &App) -> Html {
+    async fn render(app: &App) -> impl Into<Html> {
         Html::trusted(format!("<h1>Catalogs of {}</h1>", app.name))
     }
 }
@@ -49,7 +49,7 @@ impl View<App> for AlsoCatalogs {
     type Parent = Document;
     const PATH: &'static str = "/catalogs";
 
-    async fn render(_: &App) -> Html {
+    async fn render(_: &App) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -117,20 +117,19 @@ mod with_maud {
         const PATH: &'static str = "/";
         const TITLE: &'static str = "Home";
 
-        async fn render(app: &App) -> Html {
-            html! { h1 { "Welcome to " (app.name) } }.into()
+        async fn render(app: &App) -> impl Into<Html> {
+            html! { h1 { "Welcome to " (app.name) } }
         }
     }
 
     struct MaudDocument;
 
     impl Layout<App> for MaudDocument {
-        async fn render(_: &App, outlet: Outlet, title: &str) -> Html {
+        async fn render(_: &App, outlet: Outlet, title: &str) -> impl Into<Html> {
             html! {
                 title { (title) }
                 main id=(outlet.id) { (outlet.content) }
             }
-            .into()
         }
     }
 

@@ -15,14 +15,18 @@ pub trait View<S>: 'static {
     /// The title of this view, which the layout receives when it is shown.
     const TITLE: &'static str = "";
 
-    fn render(state: &S) -> impl Future<Output = Html> + Send;
+    fn render(state: &S) -> impl Future<Output = impl Into<Html>> + Send;
 }
 
 /// The outermost view: the whole document, around its outlet. It has no path
 /// and no parent.
 pub trait Layout<S>: 'static {
     /// `title` is the title of the view being shown.
-    fn render(state: &S, outlet: Outlet, title: &str) -> impl Future<Output = Html> + Send;
+    fn render(
+        state: &S,
+        outlet: Outlet,
+        title: &str,
+    ) -> impl Future<Output = impl Into<Html>> + Send;
 }
 
 /// The place in a view where the view nested inside it is shown.
@@ -51,9 +55,9 @@ impl<S: Clone + Send + Sync + 'static> Views<S> for Router<S> {
             get(|State(state): State<S>| async move {
                 let outlet = Outlet {
                     id: "outlet-0",
-                    content: V::render(&state).await,
+                    content: V::render(&state).await.into(),
                 };
-                let document = V::Parent::render(&state, outlet, V::TITLE).await;
+                let document = V::Parent::render(&state, outlet, V::TITLE).await.into();
                 axum::response::Html(String::from(document))
             }),
         )

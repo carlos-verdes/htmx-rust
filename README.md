@@ -16,13 +16,12 @@ struct App;
 struct Document;
 
 impl Layout<App> for Document {
-    async fn render(_: &App, outlet: Outlet, title: &str) -> Html {
+    async fn render(_: &App, outlet: Outlet, title: &str) -> impl Into<Html> {
         html! {
             (DOCTYPE)
             title { (title) }
             main id=(outlet.id) { (outlet.content) }
         }
-        .into()
     }
 }
 
@@ -34,8 +33,8 @@ impl View<App> for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(_: &App) -> Html {
-        html! { h1 { "Catalogs" } }.into()
+    async fn render(_: &App) -> impl Into<Html> {
+        html! { h1 { "Catalogs" } }
     }
 }
 
