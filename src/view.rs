@@ -6,7 +6,7 @@ use crate::Html;
 
 /// What one URL path shows, nested in its [`Parent`](View::Parent).
 pub trait View<S>: 'static {
-    /// The view this one is shown in.
+    /// The layout this view is shown in.
     type Parent: Layout<S>;
 
     /// The path this view answers at.
