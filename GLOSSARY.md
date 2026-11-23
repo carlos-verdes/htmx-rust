@@ -9,7 +9,7 @@ What one URL path shows: the path names a resource and the view is its represent
 _Avoid_: Route, screen, handler
 
 **Outlet**:
-The one place in a view where the view nested inside it is shown.
+The one place in a view where the view nested inside it is shown. The URL decides what fills it, not the code that uses the view, which is what sets it apart from a slot.
 _Avoid_: Slot, frame, placeholder
 
 **Layout**:
