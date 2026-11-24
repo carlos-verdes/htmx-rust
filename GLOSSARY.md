@@ -5,19 +5,15 @@ A library for server-rendered Rust web apps enhanced with htmx, where the URL al
 ## Language
 
 **View**:
-What one URL path shows: the path names a resource and the view is its representation, complete on its own. A view may be nested inside another view.
-_Avoid_: Route, screen, handler
+What one URL path shows: the path names a resource and the view is its representation, complete on its own. A view may be nested inside another view; the outermost view, nested in no other, is the whole document.
+_Avoid_: Route, screen, handler. Layout for the outermost view: a layout is how a view arranges its space (columns, a grid, a collapsible panel), which is the app's own markup
 
 **Outlet**:
 The one place in a view where the view nested inside it is shown. The URL decides what fills it, not the code that uses the view, which is what sets it apart from a slot.
 _Avoid_: Slot, frame, placeholder
 
-**Layout**:
-The outermost view, the whole document, shared by every page.
-_Avoid_: Shell, template, frame
-
 **Page**:
-A view shown directly in the layout's outlet.
+A view shown directly in the outermost view's outlet.
 
 **Section**:
 A view shown in the outlet of a page or of another section.

@@ -2,7 +2,7 @@
 
 Server-rendered Rust web apps with [htmx](https://htmx.org) and [axum](https://github.com/tokio-rs/axum), built on how the web already works: every URL names a resource, the server answers with HTML, and links and forms are the only way to move.
 
-**Status: early. Views nested in a layout are served as whole documents; the rest of the design is written down, not built.**
+**Status: early. Nested views are served as whole documents; the rest of the design is written down, not built.**
 
 ```rust
 use axum::Router;
@@ -12,7 +12,7 @@ use maud::{DOCTYPE, html};
 #[derive(Clone)]
 struct App;
 
-/// The layout: the whole document, around its outlet. It is the view with no
+/// The outermost view: the whole document, around its outlet. It has no
 /// parent and no path.
 struct Document;
 
@@ -28,7 +28,7 @@ impl View<App> for Document {
     }
 }
 
-/// A page: what `/catalogs` shows, in the layout's outlet.
+/// A page: what `/catalogs` shows, in the document's outlet.
 struct Catalogs;
 
 impl View<App> for Catalogs {
@@ -73,7 +73,7 @@ REST describes the web of pages, links and forms. htmx-rust holds an app to its 
 
 ## Planned
 
-- Views, layouts and nested sections served from one axum router
+- Views nested to any depth, served from one axum router
 - Forms
 - Regions: parts of a page refreshed on their own
 - File-system routing

@@ -94,7 +94,7 @@ async fn body(response: Response) -> String {
 }
 
 #[tokio::test]
-async fn a_page_answers_at_its_path_with_the_layout_around_it() {
+async fn a_page_answers_at_its_path_inside_the_outermost_view() {
     let response = get_path(router(), "/catalogs").await;
 
     assert_eq!(response.status(), StatusCode::OK);

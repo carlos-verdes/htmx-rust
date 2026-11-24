@@ -6,11 +6,11 @@ use crate::Html;
 
 /// What one URL path shows, nested in its [`Parent`](View::Parent).
 pub trait View<S>: 'static {
-    /// The view this one is shown in. The layout names [`Root`].
+    /// The view this one is shown in. The outermost view names [`Root`].
     type Parent: View<S>;
 
     /// This view's part of the path, which follows its ancestors' parts. The
-    /// layout has none.
+    /// outermost view has none.
     const PATH: &'static str = "";
 
     /// The title of this view, which every view around it receives when it is
@@ -21,7 +21,7 @@ pub trait View<S>: 'static {
     /// engine's output, such as maud markup, as it is.
     fn render(state: &S, outlet: Outlet) -> impl Future<Output = impl Into<Html>> + Send;
 
-    /// How many views there are from the layout down to this one.
+    /// How many views there are from the outermost down to this one.
     #[doc(hidden)]
     const DEPTH: usize = Self::Parent::DEPTH + 1;
 
@@ -48,7 +48,7 @@ pub trait View<S>: 'static {
     }
 }
 
-/// The view every layout is nested in: the one view with no parent. It shows
+/// The parent of the outermost view: the one view with no parent. It shows
 /// nothing of its own.
 pub struct Root;
 
@@ -83,7 +83,7 @@ pub struct Outlet {
 /// Registers views on an [`axum::Router`], beside its ordinary routes.
 pub trait Views<S> {
     /// Answers GET requests to the view's path with the whole document: the
-    /// view in its parent's outlet, and so on up to the layout.
+    /// view in its parent's outlet, and so on up to the outermost view.
     ///
     /// # Panics
     ///
