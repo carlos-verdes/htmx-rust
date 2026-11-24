@@ -94,22 +94,31 @@ test('a posted form answered with 303 ends on the view it redirects to, changed'
   javaScriptEnabled,
 }) => {
   const name = await startCatalog(page);
+  const remove = page.getByRole('button', { name: `Remove ${name}`, exact: true });
+  await page.goto('/');
   await page.getByRole('link', { name: 'See the catalogs' }).click();
-  await expect(page.getByRole('button', { name: `Remove ${name}`, exact: true })).toHaveCount(1);
+  await expect(remove).toHaveCount(1);
   const loads = documentLoads(page);
   const answer = page.waitForResponse((response) => response.request().method() === 'POST');
 
-  await page.getByRole('button', { name: `Remove ${name}`, exact: true }).click();
+  await remove.click();
 
   expect((await answer).status()).toBe(303);
+  await expect(remove).toHaveCount(0);
   // The bar shows the view redirected to, not the address the form posted to.
   await expectView(page, '/catalogs', 'Catalogs');
-  await expect(page.getByRole('button', { name: `Remove ${name}`, exact: true })).toHaveCount(0);
   // Without JavaScript the browser loads the form's answer and then follows it.
   expect(loads).toHaveLength(javaScriptEnabled ? 0 : 2);
 
   // That address can be refreshed, and the catalog is still gone.
   await page.reload();
   await expectView(page, '/catalogs', 'Catalogs');
-  await expect(page.getByRole('button', { name: `Remove ${name}`, exact: true })).toHaveCount(0);
+  await expect(remove).toHaveCount(0);
+
+  // The form's answer is a step of its own in the history: one step back is
+  // the catalogs as they were reached by the link, and one more is home.
+  await page.goBack();
+  await expectView(page, '/catalogs', 'Catalogs');
+  await page.goBack();
+  await expectView(page, '/', 'Home');
 });
