@@ -203,8 +203,8 @@ pub trait Views<S> {
     ///
     /// # Panics
     ///
-    /// If the path already answers GET requests, or has a parameter that no
-    /// field of the view fills.
+    /// If the path already answers GET requests, has a parameter that no field
+    /// of the view fills, or names a parameter twice.
     fn view<V: View<State = S>>(self) -> Self;
 }
 

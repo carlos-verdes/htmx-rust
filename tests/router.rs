@@ -271,6 +271,22 @@ impl View for Unfilled {
     }
 }
 
+/// A view nested in [`Catalog`] that names its parent's parameter again.
+#[derive(Serialize, Deserialize)]
+struct Twice {
+    catalog: u32,
+}
+
+impl View for Twice {
+    type State = App;
+    type Parent = Catalog;
+    const PATH: &'static str = "/copies/{catalog}";
+
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::default()
+    }
+}
+
 /// A second view that claims the path of [`Catalogs`].
 #[derive(Serialize, Deserialize)]
 struct AlsoCatalogs;
@@ -523,6 +539,14 @@ async fn a_query_string_that_does_not_parse_is_rejected_and_no_view_runs() {
 #[tokio::test]
 async fn a_query_string_that_repeats_a_path_parameter_is_rejected() {
     assert_rejected("/catalogs/7/entries/tea?catalog=8").await;
+}
+
+#[test]
+#[should_panic(
+    expected = "names the parameter {catalog} twice in its path: /catalogs/{catalog}/copies/{catalog}"
+)]
+fn a_parameter_named_twice_down_the_chain_is_an_error_at_startup() {
+    let _: Router<App> = Router::new().view::<Twice>();
 }
 
 #[test]

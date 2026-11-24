@@ -28,13 +28,14 @@ pub fn parse<T: DeserializeOwned>(fields: &str) -> Result<T, Error> {
     )))
 }
 
-/// Checks that every parameter of `path` has a field of `T` to fill it, so that
-/// a view that could not print its URL is found when it is registered. A type
-/// that does not name its fields (`#[serde(flatten)]`) is found when printed.
+/// Checks that every parameter of `path` has a field of `T` to fill it, and
+/// that none is named twice, so that a view that could not print its URL is
+/// found when it is registered. A type that does not name its fields
+/// (`#[serde(flatten)]`) is found when printed.
 ///
 /// # Panics
 ///
-/// If a parameter has no field of that name.
+/// If a parameter has no field of that name, or is named twice.
 pub fn check<T: DeserializeOwned>(path: &str) {
     /// Takes the names of the fields a type asks for, and nothing else.
     struct Names<'a>(&'a mut Option<&'static [&'static str]>);
@@ -71,14 +72,22 @@ pub fn check<T: DeserializeOwned>(path: &str) {
         }
     }
 
+    let parameters: Vec<&str> = path
+        .split('{')
+        .skip(1)
+        .filter_map(|rest| Some(rest.split_once('}')?.0))
+        .collect();
+    for (index, parameter) in parameters.iter().enumerate() {
+        assert!(
+            !parameters[..index].contains(parameter),
+            "{} names the parameter {{{parameter}}} twice in its path: {path}",
+            type_name::<T>()
+        );
+    }
     let mut names = None;
     let _ = T::deserialize(Names(&mut names));
     let Some(names) = names else { return };
-    let parameters = path
-        .split('{')
-        .skip(1)
-        .filter_map(|rest| rest.split_once('}'));
-    for (parameter, _) in parameters {
+    for parameter in parameters {
         assert!(
             names.contains(&parameter),
             "{} has no field for the parameter {{{parameter}}} of its path: {path}",
