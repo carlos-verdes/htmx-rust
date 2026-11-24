@@ -94,6 +94,134 @@ impl View for Entry {
     }
 }
 
+/// One catalog, nested in the root view beside [`Catalogs`], although its path
+/// extends that one's. It names its outlet's id itself.
+#[derive(Serialize, Deserialize)]
+struct Catalog {
+    catalog: u32,
+}
+
+impl View for Catalog {
+    type State = App;
+    type Parent = Document;
+    const PATH: &'static str = "/catalogs/{catalog}";
+    const TITLE: &'static str = "Catalog";
+    const OUTLET: Option<&'static str> = Some("catalog");
+
+    async fn render(&self, _: &App, outlet: Outlet) -> impl Into<Html> {
+        Html::trusted(format!(
+            "<h2>Catalog {}</h2><section id=\"{}\">{}</section>",
+            self.catalog,
+            outlet.id,
+            outlet.content.as_str()
+        ))
+    }
+}
+
+/// A view nested in [`Catalog`], at depth two. It holds its parent's parameter
+/// and shows itself as a link to itself.
+#[derive(Serialize, Deserialize)]
+struct Notes {
+    catalog: u32,
+}
+
+impl View for Notes {
+    type State = App;
+    type Parent = Catalog;
+    const PATH: &'static str = "/notes";
+    const TITLE: &'static str = "Notes";
+
+    async fn render(&self, _: &App, outlet: Outlet) -> impl Into<Html> {
+        Html::trusted(format!(
+            "<a href=\"{}\">Notes of {}</a><div id=\"{}\">{}</div>",
+            self.url(),
+            self.catalog,
+            outlet.id,
+            outlet.content.as_str()
+        ))
+    }
+}
+
+/// A view nested in [`Notes`], at depth three, with a parameter of its own.
+#[derive(Debug, Serialize, Deserialize)]
+struct Note {
+    catalog: u32,
+    note: String,
+    page: Option<u32>,
+}
+
+impl View for Note {
+    type State = App;
+    type Parent = Notes;
+    const PATH: &'static str = "/{note}";
+    const TITLE: &'static str = "Note";
+
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::trusted(format!("<a href=\"{}\">{self:?}</a>", self.url()))
+    }
+}
+
+/// One catalog again, at the path of [`Catalog`], but nested in [`Catalogs`].
+#[derive(Serialize, Deserialize)]
+struct Listed {
+    catalog: u32,
+}
+
+impl View for Listed {
+    type State = App;
+    type Parent = Catalogs;
+    const PATH: &'static str = "/{catalog}";
+    const TITLE: &'static str = "Catalog";
+
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::trusted(format!("<h2>Catalog {}</h2>", self.catalog))
+    }
+}
+
+/// A view nested in [`Catalog`] that does not hold its parent's parameter.
+#[derive(Serialize, Deserialize)]
+struct Unheld;
+
+impl View for Unheld {
+    type State = App;
+    type Parent = Catalog;
+    const PATH: &'static str = "/unheld";
+
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::default()
+    }
+}
+
+/// A view whose path is `/` alone.
+#[derive(Serialize, Deserialize)]
+struct Home;
+
+impl View for Home {
+    type State = App;
+    type Parent = Document;
+    const PATH: &'static str = "/";
+    const TITLE: &'static str = "Home";
+
+    async fn render(&self, _: &App, outlet: Outlet) -> impl Into<Html> {
+        Html::trusted(format!("<h1>Home</h1>{}", outlet.content.as_str()))
+    }
+}
+
+/// A view nested in [`Home`], which shows itself as a link to itself.
+#[derive(Serialize, Deserialize)]
+struct Activity;
+
+impl View for Activity {
+    type State = App;
+    type Parent = Home;
+    const PATH: &'static str = "/activity";
+    const TITLE: &'static str = "Activity";
+
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::trusted(format!("<a href=\"{}\">Activity</a>", self.url()))
+    }
+}
+
 /// A view that links to another, from a value.
 #[derive(Serialize, Deserialize)]
 struct Featured;
@@ -147,6 +275,11 @@ fn router() -> Router {
     Router::new()
         .view::<Catalogs>()
         .view::<Archived>()
+        .view::<Catalog>()
+        .view::<Notes>()
+        .view::<Note>()
+        .view::<Home>()
+        .view::<Activity>()
         .view::<Entry>()
         .view::<Featured>()
         .route("/health", get(|| async { "ok" }))
@@ -185,6 +318,98 @@ async fn a_nested_view_answers_at_its_ancestors_path_and_its_own_inside_them() {
         body(response).await,
         "<title>Archived catalogs - Loom</title><main id=\"outlet-0\">\
          <h1>Catalogs of Loom</h1><div id=\"outlet-1\"><p>None archived</p></div></main>"
+    );
+}
+
+#[tokio::test]
+async fn a_view_nested_in_one_with_a_parameter_answers_inside_it_at_depth_two() {
+    let response = get_path(router(), "/catalogs/7/notes").await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        body(response).await,
+        "<title>Notes - Loom</title><main id=\"outlet-0\">\
+         <h2>Catalog 7</h2><section id=\"catalog\">\
+         <a href=\"/catalogs/7/notes\">Notes of 7</a><div id=\"outlet-2\"></div>\
+         </section></main>"
+    );
+}
+
+#[tokio::test]
+async fn a_view_at_depth_three_answers_inside_every_ancestor_and_prints_its_url() {
+    let response = get_path(router(), "/catalogs/7/notes/first%20draft?page=2").await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        body(response).await,
+        "<title>Note - Loom</title><main id=\"outlet-0\">\
+         <h2>Catalog 7</h2><section id=\"catalog\">\
+         <a href=\"/catalogs/7/notes\">Notes of 7</a><div id=\"outlet-2\">\
+         <a href=\"/catalogs/7/notes/first%20draft?page=2\">\
+         Note { catalog: 7, note: \"first draft\", page: Some(2) }</a>\
+         </div></section></main>"
+    );
+}
+
+/// The ids of the outlets in `html`, outermost first.
+fn outlets(html: &str) -> Vec<&str> {
+    let ids = html.split(" id=\"").skip(1);
+    ids.map(|rest| rest.split_once('"').unwrap().0).collect()
+}
+
+#[tokio::test]
+async fn an_outlets_id_follows_its_views_depth_unless_the_view_names_one() {
+    let catalogs = body(get_path(router(), "/catalogs/archived").await).await;
+    let notes = body(get_path(router(), "/catalogs/7/notes/first").await).await;
+
+    assert_eq!(outlets(&catalogs), ["outlet-0", "outlet-1"]);
+    // The one a view names does not shift those that follow it.
+    assert_eq!(outlets(&notes), ["outlet-0", "catalog", "outlet-2"]);
+}
+
+#[tokio::test]
+async fn a_path_that_extends_anothers_is_nested_in_it_only_when_declared_so() {
+    let beside = Router::new().view::<Catalogs>().view::<Catalog>();
+    let inside = Router::new().view::<Catalogs>().view::<Listed>();
+    let app = App { name: "Loom" };
+
+    let beside = get_path(beside.with_state(app.clone()), "/catalogs/7").await;
+    let inside = get_path(inside.with_state(app), "/catalogs/7").await;
+
+    assert_eq!(
+        body(beside).await,
+        "<title>Catalog - Loom</title><main id=\"outlet-0\">\
+         <h2>Catalog 7</h2><section id=\"catalog\"></section></main>"
+    );
+    assert_eq!(
+        body(inside).await,
+        "<title>Catalog - Loom</title><main id=\"outlet-0\">\
+         <h1>Catalogs of Loom</h1><div id=\"outlet-1\"><h2>Catalog 7</h2></div></main>"
+    );
+}
+
+#[tokio::test]
+async fn a_view_nested_in_the_one_at_the_root_path_is_not_served_behind_two_slashes() {
+    let response = get_path(router(), "/activity").await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        body(response).await,
+        "<title>Activity - Loom</title><main id=\"outlet-0\">\
+         <h1>Home</h1><a href=\"/activity\">Activity</a></main>"
+    );
+}
+
+#[tokio::test]
+async fn the_root_view_on_its_own_is_served_at_the_root_path() {
+    let router = Router::new().view::<Document>();
+
+    let response = get_path(router.with_state(App { name: "Loom" }), "/").await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        body(response).await,
+        "<title> - Loom</title><main id=\"outlet-0\"></main>"
     );
 }
 
@@ -277,6 +502,14 @@ async fn a_query_string_that_repeats_a_path_parameter_is_rejected() {
 #[should_panic(expected = "no field for the parameter {id} of its path: /unfilled/{id}")]
 fn a_path_parameter_without_a_field_is_an_error_at_startup() {
     let _: Router<App> = Router::new().view::<Unfilled>();
+}
+
+#[test]
+#[should_panic(
+    expected = "no field for the parameter {catalog} of its path: /catalogs/{catalog}/unheld"
+)]
+fn an_ancestors_path_parameter_without_a_field_is_an_error_at_startup() {
+    let _: Router<App> = Router::new().view::<Unheld>();
 }
 
 #[tokio::test]

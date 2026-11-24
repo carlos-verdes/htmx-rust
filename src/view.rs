@@ -29,7 +29,21 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// This view's part of the path, which follows its ancestors' parts. The
     /// root view has none. A parameter is a field's name in braces, as in
     /// `"/catalogs/{id}"`.
+    ///
+    /// A view holds a field for every parameter of its whole path, those of
+    /// its ancestors' parts too, under the same names: a view nested in the one
+    /// at `"/catalogs/{id}"` has an `id` of its own, or it could not print its
+    /// URL. So a parameter's name is used once on the way down.
+    ///
+    /// The parts are joined as they are, except that a part's last `/` gives
+    /// way to the next part: a view at `"/activity"` nested in one at `"/"` is
+    /// at `/activity`. A view whose whole path is empty is at `/`.
     const PATH: &'static str = "";
+
+    /// The id of this view's outlet. By default it follows the view's depth:
+    /// `outlet-0` for the root view, `outlet-1` for a view nested in it, and
+    /// so on.
+    const OUTLET: Option<&'static str> = None;
 
     /// The title of this view, which every view around it receives when it is
     /// shown.
@@ -61,7 +75,27 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
 pub struct NoParent;
 
 /// What a view names as its parent: a [`View`] with the same state, or
-/// [`NoParent`]. Nothing else can be one.
+/// [`NoParent`]. Nothing else can be one, and naming anything else does not
+/// compile:
+///
+/// ```compile_fail,E0277
+/// use htmx_rust::{Html, Outlet, View};
+/// use serde::{Deserialize, Serialize};
+///
+/// struct NotAView;
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct Catalogs;
+///
+/// impl View for Catalogs {
+///     type State = ();
+///     type Parent = NotAView;
+///
+///     async fn render(&self, _: &(), _: Outlet) -> impl Into<Html> {
+///         Html::default()
+///     }
+/// }
+/// ```
 pub trait Parent<S>: chain::Chain<S> {}
 
 impl<S: Sync> Parent<S> for NoParent {}
@@ -115,7 +149,8 @@ mod chain {
         type Views = (V, <V::Parent as Chain<V::State>>::Views);
 
         fn path() -> String {
-            V::Parent::path() + V::PATH
+            let path = V::Parent::path().trim_end_matches('/').to_owned() + V::PATH;
+            if path.is_empty() { "/".into() } else { path }
         }
 
         fn parse(fields: &str) -> Result<Self::Views, url::Error> {
@@ -129,7 +164,7 @@ mod chain {
             title: &'static str,
         ) -> Html {
             let outlet = Outlet {
-                id: format!("outlet-{}", V::Parent::DEPTH),
+                id: V::OUTLET.map_or_else(|| format!("outlet-{}", V::Parent::DEPTH), Into::into),
                 content,
                 title,
             };
