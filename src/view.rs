@@ -174,9 +174,14 @@ impl<V: View> Deref for Path<V> {
 /// own view's fields, then every view's other fields as the one query string.
 impl<V: View> Display for Path<V> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
-        let mut path = String::new();
+        let mut path = V::route();
         let mut query = Serializer::new(String::new());
         V::print(self, &mut path, &mut query);
+        assert!(
+            !path.contains('{'),
+            "{} has no field for a parameter of its path: {path}",
+            std::any::type_name::<V>()
+        );
         formatter.write_str(&path)?;
         match query.finish() {
             query if query.is_empty() => Ok(()),
@@ -238,7 +243,7 @@ mod chain {
         /// Reads this view and its ancestors from what a URL carries.
         fn parse(fields: &str) -> Result<Self::Path, url::Error>;
 
-        /// Prints this view's part and its ancestors' before it.
+        /// Fills this view's parameters in the route, and its ancestors' before.
         fn print(at: &Self::Path, path: &mut String, query: &mut Serializer<'_, String>);
 
         /// Renders this view around `content`, and its ancestors around it.
@@ -292,7 +297,7 @@ mod chain {
 
         fn print(at: &Path<V>, path: &mut String, query: &mut Serializer<'_, String>) {
             V::Parent::print(&at.0.1, path, query);
-            url::print(V::PATH, &at.0.0, path, query);
+            url::print(&at.0.0, path, query);
         }
 
         async fn show(at: &Path<V>, state: &V::State, content: Html, title: &'static str) -> Html {

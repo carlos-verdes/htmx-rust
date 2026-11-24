@@ -920,3 +920,82 @@ mod with_maud {
         );
     }
 }
+
+/// A view whose part of the path ends in a parameter, and one nested in it.
+#[derive(Serialize, Deserialize)]
+struct Shelf {
+    shelf: String,
+}
+
+impl View for Shelf {
+    type State = App;
+    type Parent = Document;
+    const PATH: &'static str = "/shelves/{shelf}";
+
+    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+        Html::trusted(format!("Shelf {:?}[{}]", at.shelf, outlet.content.as_str()))
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct Books;
+
+impl View for Books {
+    type State = App;
+    type Parent = Shelf;
+    const PATH: &'static str = "/books";
+
+    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::trusted("Books")
+    }
+}
+
+#[tokio::test]
+async fn a_path_whose_parameter_is_empty_is_answered_with_the_view_it_names() {
+    let router = || {
+        Router::new()
+            .view::<Shelf>()
+            .view::<Books>()
+            .with_state(App { name: "Loom" })
+    };
+    let books = |shelf: &str| {
+        Shelf {
+            shelf: shelf.into(),
+        }
+        .path()
+        .to(Books)
+        .to_string()
+    };
+
+    let named = get_path(router(), &books("top")).await;
+    assert!(body(named).await.contains("Shelf \"top\"[Books]"));
+
+    // The route with an empty parameter, not `/shelves/books`, which is the
+    // shelf named "books".
+    assert_eq!(books(""), "/shelves//books");
+    let empty = get_path(router(), &books("")).await;
+    assert!(body(empty).await.contains("Shelf \"\"[Books]"));
+}
+
+/// A view that hides the names of its fields from the startup checks.
+#[derive(Serialize, Deserialize)]
+struct Flattened {
+    #[serde(flatten)]
+    entry: Shelf,
+}
+
+impl View for Flattened {
+    type State = App;
+    type Parent = Document;
+    const PATH: &'static str = "/flattened";
+
+    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::default()
+    }
+}
+
+#[test]
+#[should_panic(expected = "Flattened does not name its fields")]
+fn a_view_with_a_flattened_field_is_an_error_at_startup() {
+    let _: Router<App> = Router::new().view::<Flattened>();
+}
