@@ -15,8 +15,9 @@ use chain::Chain;
 ///
 /// A view's fields are what its URL carries: the parameters its path names
 /// (`{id}` fills the field `id`), and the query string for every other field.
-/// Each field holds one plain value, such as a number, a string or an
-/// `Option` of one. A request's URL is parsed into the view, and
+/// Each field holds a plain value, such as a number, a string or an `Option`
+/// of one, or a `Vec` of them, which the query string carries by repeating the
+/// field's name (`?tag=tea&tag=green`). A request's URL is parsed into the view, and
 /// [`url`](View::url) prints it back.
 pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// The application state this view renders with: the router's own.
@@ -161,12 +162,14 @@ pub trait Views<S> {
     ///
     /// # Panics
     ///
-    /// If the path already answers GET requests.
+    /// If the path already answers GET requests, or has a parameter that no
+    /// field of the view fills.
     fn view<V: View<State = S>>(self) -> Self;
 }
 
 impl<S: Clone + Send + Sync + 'static> Views<S> for Router<S> {
     fn view<V: View<State = S>>(self) -> Self {
+        url::check::<V>(&V::path());
         self.route(
             &V::path(),
             get(

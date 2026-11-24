@@ -79,6 +79,8 @@ struct Entry {
     #[serde(default)]
     q: String,
     page: Option<u32>,
+    #[serde(default)]
+    tag: Vec<String>,
 }
 
 impl View for Entry {
@@ -107,6 +109,7 @@ impl View for Featured {
             name: "red & white/rosé".into(),
             q: "a+b c?".into(),
             page: Some(2),
+            tag: vec!["red".into(), "dry".into()],
         };
         Html::trusted(format!("<a href=\"{}\">Featured</a>", entry.url()))
     }
@@ -122,7 +125,7 @@ impl View for Unfilled {
     const PATH: &'static str = "/unfilled/{id}";
 
     async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
-        Html::trusted(self.url())
+        Html::default()
     }
 }
 
@@ -146,7 +149,6 @@ fn router() -> Router {
         .view::<Archived>()
         .view::<Entry>()
         .view::<Featured>()
-        .view::<Unfilled>()
         .route("/health", get(|| async { "ok" }))
         .with_state(App { name: "Loom" })
 }
@@ -195,7 +197,7 @@ async fn path_parameters_and_the_query_string_are_parsed_into_the_views_fields()
         body(response).await,
         "<title>Entry - Loom</title><main id=\"outlet-0\">\
          <a href=\"/catalogs/7/entries/tea?q=green+leaf&page=2\">\
-         Entry { catalog: 7, name: \"tea\", q: \"green leaf\", page: Some(2) }</a></main>"
+         Entry { catalog: 7, name: \"tea\", q: \"green leaf\", page: Some(2), tag: [] }</a></main>"
     );
 }
 
@@ -206,7 +208,7 @@ async fn a_field_the_url_leaves_out_takes_its_default() {
     assert_eq!(response.status(), StatusCode::OK);
     assert!(body(response).await.contains(
         "<a href=\"/catalogs/7/entries/tea?q=\">\
-             Entry { catalog: 7, name: \"tea\", q: \"\", page: None }</a>"
+             Entry { catalog: 7, name: \"tea\", q: \"\", page: None, tag: [] }</a>"
     ));
 }
 
@@ -222,7 +224,7 @@ async fn a_link_rendered_from_a_view_value_requested_back_answers_with_that_view
     let url = link(&featured);
     assert_eq!(
         url,
-        "/catalogs/7/entries/red%20%26%20white%2Fros%C3%A9?q=a%2Bb+c%3F&page=2"
+        "/catalogs/7/entries/red%20%26%20white%2Fros%C3%A9?q=a%2Bb+c%3F&page=2&tag=red&tag=dry"
     );
 
     let response = get_path(router(), url).await;
@@ -230,7 +232,7 @@ async fn a_link_rendered_from_a_view_value_requested_back_answers_with_that_view
     assert_eq!(response.status(), StatusCode::OK);
     let entry = body(response).await;
     assert!(entry.contains(
-        "Entry { catalog: 7, name: \"red & white/rosé\", q: \"a+b c?\", page: Some(2) }"
+        "Entry { catalog: 7, name: \"red & white/rosé\", q: \"a+b c?\", page: Some(2), tag: [\"red\", \"dry\"] }"
     ));
     // The view the URL was parsed into prints the URL it came from.
     assert_eq!(link(&entry), url);
@@ -271,10 +273,10 @@ async fn a_query_string_that_repeats_a_path_parameter_is_rejected() {
     assert_rejected("/catalogs/7/entries/tea?catalog=8").await;
 }
 
-#[tokio::test]
-#[should_panic(expected = "/unfilled/{id}")]
-async fn printing_a_view_whose_path_has_a_parameter_without_a_field_is_an_error() {
-    get_path(router(), "/unfilled/1").await;
+#[test]
+#[should_panic(expected = "no field for the parameter {id} of its path: /unfilled/{id}")]
+fn a_path_parameter_without_a_field_is_an_error_at_startup() {
+    let _: Router<App> = Router::new().view::<Unfilled>();
 }
 
 #[tokio::test]
