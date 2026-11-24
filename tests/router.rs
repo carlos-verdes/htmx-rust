@@ -8,7 +8,7 @@ use axum::{
     response::Response,
     routing::get,
 };
-use htmx_rust::{Html, NoParent, Outlet, Path, View, Views};
+use htmx_rust::{Html, NoParent, Outlet, View, ViewPath, Views};
 use http_body_util::BodyExt;
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
@@ -25,7 +25,7 @@ impl View for Document {
     type State = App;
     type Parent = NoParent;
 
-    async fn render(_: &Path<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
             "<title>{} - {}</title><main id=\"{}\">{}</main>",
             outlet.title,
@@ -45,7 +45,7 @@ impl View for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(_: &Path<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
             "<h1>Catalogs of {}</h1><div id=\"{}\">{}</div>",
             app.name,
@@ -65,7 +65,7 @@ impl View for Archived {
     const PATH: &'static str = "/archived";
     const TITLE: &'static str = "Archived catalogs";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::trusted("<p>None archived</p>")
     }
 }
@@ -89,7 +89,7 @@ impl View for Entry {
     const PATH: &'static str = "/shelves/{shelf}/entries/{name}";
     const TITLE: &'static str = "Entry";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::trusted(format!("<a href=\"{at}\">{:?}</a>", **at))
     }
 }
@@ -110,7 +110,7 @@ impl View for Catalog {
     const TITLE: &'static str = "Catalog";
     const OUTLET: Option<&'static str> = Some("catalog");
 
-    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
             "<h2>Catalog {}</h2><section id=\"{}\">{}</section>",
             at.catalog,
@@ -135,7 +135,7 @@ impl View for Notes {
     const PATH: &'static str = "/notes";
     const TITLE: &'static str = "Notes";
 
-    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         let note = Note {
             note: "first draft".into(),
             rev: None,
@@ -167,7 +167,7 @@ impl View for Note {
     const PATH: &'static str = "/{note}";
     const TITLE: &'static str = "Note";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
             "<a href=\"{at}\">{:?} of catalog {}</a>",
             **at,
@@ -186,7 +186,7 @@ impl View for Labels {
     const PATH: &'static str = "/labels";
     const TITLE: &'static str = "Labels";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         let Catalog { catalog, page } = **at.parent();
         Html::trusted(format!("<p>Labels of {catalog}, page {page:?}</p>"))
     }
@@ -202,7 +202,7 @@ impl View for Tabs {
     type Parent = Catalog;
     const TITLE: &'static str = "Tabs";
 
-    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
             "<nav><a href=\"{}\">Summary</a></nav><div id=\"{}\">{}</div>",
             at.to(Summary),
@@ -222,7 +222,7 @@ impl View for Summary {
     const PATH: &'static str = "/summary";
     const TITLE: &'static str = "Summary";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         let catalog = at.parent().parent().catalog;
         Html::trusted(format!("<p>Summary of {catalog}</p>"))
     }
@@ -240,7 +240,7 @@ impl View for Listed {
     const PATH: &'static str = "/{catalog}";
     const TITLE: &'static str = "Catalog";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::trusted(format!("<h2>Catalog {}</h2>", at.catalog))
     }
 }
@@ -255,7 +255,7 @@ impl View for Home {
     const PATH: &'static str = "/";
     const TITLE: &'static str = "Home";
 
-    async fn render(_: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!("<h1>Home</h1>{}", outlet.content.as_str()))
     }
 }
@@ -270,7 +270,7 @@ impl View for Activity {
     const PATH: &'static str = "/activity";
     const TITLE: &'static str = "Activity";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::trusted(format!("<a href=\"{at}\">Activity</a>"))
     }
 }
@@ -284,7 +284,7 @@ impl View for Recent {
     type Parent = Home;
     const PATH: &'static str = "recent";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::trusted(format!("<a href=\"{at}\">Recent</a>"))
     }
 }
@@ -300,7 +300,7 @@ impl View for Featured {
     type Parent = Document;
     const PATH: &'static str = "/featured";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         let entry = Entry {
             shelf: 7,
             name: "red & white/rosé".into(),
@@ -334,7 +334,7 @@ impl View for Unfilled {
     type Parent = Document;
     const PATH: &'static str = "/unfilled/{id}";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -348,7 +348,7 @@ impl View for InUnfilled {
     type Parent = Unfilled;
     const PATH: &'static str = "/inside";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -363,7 +363,7 @@ impl View for Borrowed {
     type Parent = Catalog;
     const PATH: &'static str = "/copies/{catalog}";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -379,7 +379,7 @@ impl View for Repeated {
     type Parent = Catalog;
     const PATH: &'static str = "/repeated";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -396,7 +396,7 @@ impl View for Paged {
     type Parent = Notes;
     const PATH: &'static str = "/paged";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -410,7 +410,7 @@ impl View for AlsoCatalogs {
     type Parent = Document;
     const PATH: &'static str = "/catalogs";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -870,7 +870,7 @@ mod with_maud {
         const PATH: &'static str = "/";
         const TITLE: &'static str = "Home";
 
-        async fn render(at: &Path<Self>, app: &App, _: Outlet) -> impl Into<Html> {
+        async fn render(at: &ViewPath<Self>, app: &App, _: Outlet) -> impl Into<Html> {
             html! { h1 { "Welcome to " (app.name) } a href=(at.to(Search { q: "a&b".into() })) { "Search" } }
         }
     }
@@ -885,7 +885,7 @@ mod with_maud {
         type Parent = Home;
         const PATH: &'static str = "search";
 
-        async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+        async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
             Html::default()
         }
     }
@@ -897,7 +897,7 @@ mod with_maud {
         type State = App;
         type Parent = NoParent;
 
-        async fn render(_: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+        async fn render(_: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
             html! {
                 title { (outlet.title) }
                 main id=(outlet.id) { (outlet.content) }
@@ -932,7 +932,7 @@ impl View for Shelf {
     type Parent = Document;
     const PATH: &'static str = "/shelves/{shelf}";
 
-    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!("Shelf {:?}[{}]", at.shelf, outlet.content.as_str()))
     }
 }
@@ -945,7 +945,7 @@ impl View for Books {
     type Parent = Shelf;
     const PATH: &'static str = "/books";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::trusted("Books")
     }
 }
@@ -989,7 +989,7 @@ impl View for Flattened {
     type Parent = Document;
     const PATH: &'static str = "/flattened";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }

@@ -22,7 +22,7 @@ use chain::Chain;
 /// A view's fields are what its own part of the URL carries: the parameters
 /// its [`PATH`](View::PATH) names (`{catalog_id}` fills the field
 /// `catalog_id`), and the query string for every other field. It holds nothing
-/// of the views it is nested in: their values are in the [`Path`] it is shown
+/// of the views it is nested in: their values are in the [`ViewPath`] it is shown
 /// at. Each field holds a plain value, such as a number, a string or an
 /// `Option` of one, or a `Vec` of them, which the query string carries by
 /// repeating the field's name (`?tag=tea&tag=green`).
@@ -60,20 +60,20 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     const TITLE: &'static str = "";
 
     /// Renders the view shown `at` a path: `at.catalog_id` is a field of the
-    /// view, [`at.parent()`](Path::parent) the path of the view it is nested
-    /// in, and [`at.to(..)`](Path::to) the path of a view nested in it.
+    /// view, [`at.parent()`](ViewPath::parent) the path of the view it is nested
+    /// in, and [`at.to(..)`](ViewPath::to) the path of a view nested in it.
     ///
     /// Declared as `async fn render(..) -> impl Into<Html>`, it returns an
     /// engine's output, such as maud markup, as it is.
     fn render(
-        at: &Path<Self>,
+        at: &ViewPath<Self>,
         state: &Self::State,
         outlet: Outlet,
     ) -> impl Future<Output = impl Into<Html>> + Send;
 
     /// The path of this view where its ancestors carry nothing: each is its
     /// `Default`, so a link to a view at the top does not name the root view.
-    /// A view below it is reached with [`Path::to`].
+    /// A view below it is reached with [`ViewPath::to`].
     ///
     /// A view whose parent needs a value has no path of its own:
     ///
@@ -83,11 +83,11 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// ```
     ///
     /// It is not for a view to define.
-    fn path(self) -> Path<Self>
+    fn path(self) -> ViewPath<Self>
     where
         Above<Self>: Default,
     {
-        Path::new(self, Default::default())
+        ViewPath::new(self, Default::default())
     }
 }
 
@@ -96,7 +96,7 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
 /// to that URL is parsed back into the same path.
 ///
 /// A path starts from a view value ([`View::path`]) and goes down with
-/// [`to`](Path::to); a view is handed the one it is shown at when it renders.
+/// [`to`](ViewPath::to); a view is handed the one it is shown at when it renders.
 /// There is no other way to a URL, so a link cannot point at a route that does
 /// not exist. The view's fields are read through the path: `path.catalog_id`.
 ///
@@ -112,12 +112,12 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
 /// assert_eq!(item.item_id, 3);
 /// assert_eq!(item.parent().catalog_id, 7);
 /// ```
-pub struct Path<V: View>(Arc<(V, Above<V>)>);
+pub struct ViewPath<V: View>(Arc<(V, Above<V>)>);
 
-/// The path of a view's parent: a [`Path`], or [`NoParent`] above the root view.
-type Above<V> = <<V as View>::Parent as Chain<<V as View>::State>>::Path;
+/// The path of a view's parent: a [`ViewPath`], or [`NoParent`] above the root view.
+type Above<V> = <<V as View>::Parent as Chain<<V as View>::State>>::ViewPath;
 
-impl<V: View> Path<V> {
+impl<V: View> ViewPath<V> {
     fn new(view: V, parent: Above<V>) -> Self {
         Self(Arc::new((view, parent)))
     }
@@ -129,31 +129,31 @@ impl<V: View> Path<V> {
     #[doc = include_str!("doctest_views.txt")]
     /// Document.path().to(Item { item_id: 3 });
     /// ```
-    pub fn to<C>(&self, child: C) -> Path<C>
+    pub fn to<C>(&self, child: C) -> ViewPath<C>
     where
         C: View<Parent = V, State = V::State>,
     {
-        Path::new(child, self.clone())
+        ViewPath::new(child, self.clone())
     }
 
     /// The path of the view this one is nested in. From it a view reaches its
     /// ancestors' fields, and the views beside it: `at.parent().to(Sibling)`.
-    pub fn parent(&self) -> &Path<V::Parent>
+    pub fn parent(&self) -> &ViewPath<V::Parent>
     where
-        V::Parent: View + Parent<V::State, Path = Path<V::Parent>>,
+        V::Parent: View + Parent<V::State, ViewPath = ViewPath<V::Parent>>,
     {
         &self.0.1
     }
 }
 
 /// A path is shared, not copied: views need not be `Clone`.
-impl<V: View> Clone for Path<V> {
+impl<V: View> Clone for ViewPath<V> {
     fn clone(&self) -> Self {
         Self(self.0.clone())
     }
 }
 
-impl<V: View + Default> Default for Path<V>
+impl<V: View + Default> Default for ViewPath<V>
 where
     Above<V>: Default,
 {
@@ -162,7 +162,7 @@ where
     }
 }
 
-impl<V: View> Deref for Path<V> {
+impl<V: View> Deref for ViewPath<V> {
     type Target = V;
 
     fn deref(&self) -> &V {
@@ -172,7 +172,7 @@ impl<V: View> Deref for Path<V> {
 
 /// The URL: the parts of the path from the root view down, each filled from its
 /// own view's fields, then every view's other fields as the one query string.
-impl<V: View> Display for Path<V> {
+impl<V: View> Display for ViewPath<V> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut path = V::route();
         let mut query = Serializer::new(String::new());
@@ -199,7 +199,7 @@ pub struct NoParent;
 /// compile:
 ///
 /// ```compile_fail,E0277
-/// use htmx_rust::{Html, Outlet, Path, View};
+/// use htmx_rust::{Html, Outlet, ViewPath, View};
 /// use serde::{Deserialize, Serialize};
 ///
 /// struct NotAView;
@@ -211,7 +211,7 @@ pub struct NoParent;
 ///     type State = ();
 ///     type Parent = NotAView;
 ///
-///     async fn render(_: &Path<Self>, _: &(), _: Outlet) -> impl Into<Html> {
+///     async fn render(_: &ViewPath<Self>, _: &(), _: Outlet) -> impl Into<Html> {
 ///         Html::default()
 ///     }
 /// }
@@ -230,9 +230,9 @@ mod chain {
         /// How many views there are from the root view down to this one.
         const DEPTH: usize;
 
-        /// Where this view is shown: a [`Path`](super::Path), or nothing above
+        /// Where this view is shown: a [`ViewPath`](super::ViewPath), or nothing above
         /// the root view.
-        type Path: Clone + Send + Sync;
+        type ViewPath: Clone + Send + Sync;
 
         /// The whole path as the router matches it, parameters in braces.
         fn route() -> String;
@@ -241,14 +241,14 @@ mod chain {
         fn check(seen: &mut Vec<(&'static str, &'static str)>);
 
         /// Reads this view and its ancestors from what a URL carries.
-        fn parse(fields: &str) -> Result<Self::Path, url::Error>;
+        fn parse(fields: &str) -> Result<Self::ViewPath, url::Error>;
 
         /// Fills this view's parameters in the route, and its ancestors' before.
-        fn print(at: &Self::Path, path: &mut String, query: &mut Serializer<'_, String>);
+        fn print(at: &Self::ViewPath, path: &mut String, query: &mut Serializer<'_, String>);
 
         /// Renders this view around `content`, and its ancestors around it.
         fn show(
-            at: &Self::Path,
+            at: &Self::ViewPath,
             state: &S,
             content: Html,
             title: &'static str,
@@ -257,7 +257,7 @@ mod chain {
 
     impl<S: Sync> Chain<S> for NoParent {
         const DEPTH: usize = 0;
-        type Path = NoParent;
+        type ViewPath = NoParent;
 
         fn route() -> String {
             String::new()
@@ -278,7 +278,7 @@ mod chain {
 
     impl<V: View> Chain<V::State> for V {
         const DEPTH: usize = V::Parent::DEPTH + 1;
-        type Path = Path<V>;
+        type ViewPath = ViewPath<V>;
 
         fn route() -> String {
             let mut route = V::Parent::route();
@@ -291,16 +291,24 @@ mod chain {
             url::check::<V>(V::PATH, seen);
         }
 
-        fn parse(fields: &str) -> Result<Path<V>, url::Error> {
-            Ok(Path::new(url::parse(fields)?, V::Parent::parse(fields)?))
+        fn parse(fields: &str) -> Result<ViewPath<V>, url::Error> {
+            Ok(ViewPath::new(
+                url::parse(fields)?,
+                V::Parent::parse(fields)?,
+            ))
         }
 
-        fn print(at: &Path<V>, path: &mut String, query: &mut Serializer<'_, String>) {
+        fn print(at: &ViewPath<V>, path: &mut String, query: &mut Serializer<'_, String>) {
             V::Parent::print(&at.0.1, path, query);
             url::print(&at.0.0, path, query);
         }
 
-        async fn show(at: &Path<V>, state: &V::State, content: Html, title: &'static str) -> Html {
+        async fn show(
+            at: &ViewPath<V>,
+            state: &V::State,
+            content: Html,
+            title: &'static str,
+        ) -> Html {
             let outlet = Outlet {
                 id: V::OUTLET.map_or_else(|| format!("outlet-{}", V::Parent::DEPTH), Into::into),
                 content,

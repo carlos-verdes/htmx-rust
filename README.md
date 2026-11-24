@@ -6,7 +6,7 @@ Server-rendered Rust web apps with [htmx](https://htmx.org) and [axum](https://g
 
 ```rust
 use axum::Router;
-use htmx_rust::{Html, NoParent, Outlet, Path, View, Views};
+use htmx_rust::{Html, NoParent, Outlet, ViewPath, View, Views};
 use maud::{DOCTYPE, html};
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +22,7 @@ impl View for Document {
     type State = App;
     type Parent = NoParent;
 
-    async fn render(_: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         html! {
             (DOCTYPE)
             title { (outlet.title) }
@@ -41,7 +41,7 @@ impl View for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         let teas = Catalog { catalog_id: 7, q: Some("tea".into()) };
         html! {
             h1 { "Catalogs" }
@@ -69,7 +69,7 @@ impl View for Catalog {
     const TITLE: &'static str = "Catalog";
 
     /// A view renders at the path it is shown at, and reads its fields from it.
-    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         html! {
             h1 { "Catalog " (at.catalog_id) }
             // The path of a view nested in this one: `/catalogs/7/items/3?q=tea`.
@@ -93,7 +93,7 @@ impl View for Item {
     const PATH: &'static str = "/items/{item_id}";
     const TITLE: &'static str = "Item";
 
-    async fn render(at: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         // The path above this one: its parent's fields, and the views beside it.
         let catalog = at.parent();
         html! {
@@ -111,8 +111,8 @@ let router: Router = Router::new()
 
 // A path starts at a view whose ancestors carry nothing (the root view is its
 // `Default`) and goes down from there. It prints as the URL.
-let catalog: Path<Catalog> = Catalog { catalog_id: 7, q: None }.path();
-let item: Path<Item> = catalog.to(Item { item_id: 3 });
+let catalog: ViewPath<Catalog> = Catalog { catalog_id: 7, q: None }.path();
+let item: ViewPath<Item> = catalog.to(Item { item_id: 3 });
 assert_eq!(catalog.to_string(), "/catalogs/7");
 assert_eq!(item.to_string(), "/catalogs/7/items/3");
 ```
@@ -121,7 +121,7 @@ A view derives serde's `Serialize` and `Deserialize`: that is how its fields are
 
 Nesting is declared, never read from the path: `/catalogs/7` extends `/catalogs`, and is still shown beside it in the root view's outlet, because `Catalog` names `Document` as its parent. An outlet's id follows its view's depth (`outlet-0`, `outlet-1`, …) unless the view names one: `const OUTLET: Option<&'static str> = Some("catalog");`.
 
-A URL is never written by hand. It is a `Path`: a view value and, above it, the path of its parent. What the compiler refuses:
+A URL is never written by hand. It is a `ViewPath`: a view value and, above it, the path of its parent. What the compiler refuses:
 
 - `Item { item_id: 3 }.path()`: its parent, `Catalog`, needs a value. Only a view whose ancestors all derive `Default` starts a path.
 - `Catalogs.path().to(Item { item_id: 3 })`: `Item` is not nested in `Catalogs`.

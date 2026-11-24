@@ -16,7 +16,7 @@ use axum::{
     response::{IntoResponse, Redirect},
     routing::{get, post},
 };
-use htmx_rust::{Html, NoParent, Outlet, Path, View, Views};
+use htmx_rust::{Html, NoParent, Outlet, View, ViewPath, Views};
 use maud::{DOCTYPE, html};
 use serde::{Deserialize, Serialize};
 
@@ -96,7 +96,7 @@ impl View for Document {
     type State = App;
     type Parent = NoParent;
 
-    async fn render(_: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         let target = format!("#{}", outlet.id);
         html! {
             (DOCTYPE)
@@ -140,7 +140,7 @@ impl View for Home {
     const PATH: &'static str = "/";
     const TITLE: &'static str = "Home";
 
-    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         html! {
             h1 { "Home" }
             p { "Every address here shows the same thing on a click and on a refresh." }
@@ -171,7 +171,7 @@ impl View for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(at: &Path<Self>, app: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, app: &App, _: Outlet) -> impl Into<Html> {
         let q = at.q.to_lowercase();
         let store = app.lock().unwrap();
         let found = store
@@ -229,7 +229,7 @@ impl View for Catalog {
     type Parent = Document;
     const PATH: &'static str = "/catalogs/{catalog_id}";
 
-    async fn render(at: &Path<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
         html! {
             @match store.catalog(at.catalog_id) {
@@ -259,7 +259,7 @@ impl View for Tabs {
     type Parent = Catalog;
     const TITLE: &'static str = "Catalog";
 
-    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         html! {
             nav {
                 a href=(at.to(Items)) { "Items" }
@@ -282,7 +282,7 @@ impl View for Tags {
     const PATH: &'static str = "/tags";
     const TITLE: &'static str = "Tags";
 
-    async fn render(at: &Path<Self>, app: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, app: &App, _: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
         let catalog = store.catalog(at.parent().parent().catalog_id);
         html! {
@@ -308,7 +308,7 @@ impl View for Items {
     const TITLE: &'static str = "Items";
     const OUTLET: Option<&'static str> = Some("item");
 
-    async fn render(at: &Path<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
         let catalog = store.catalog(at.parent().parent().catalog_id);
         html! {
@@ -336,7 +336,7 @@ impl View for Item {
     const PATH: &'static str = "/{item}";
     const TITLE: &'static str = "Item";
 
-    async fn render(at: &Path<Self>, app: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &ViewPath<Self>, app: &App, _: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
         let catalog = store
             .catalog(at.parent().parent().parent().catalog_id)

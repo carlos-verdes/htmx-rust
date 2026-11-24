@@ -2,7 +2,7 @@
 
 A view is a type whose fields are what its own part of a URL carries (the parameters of its part of the path, its fields of the query string). Each view names the view it is nested in; the shape of the path says nothing about nesting, and `/catalogs` and `/catalogs/{catalog_id}` are two separate views, neither inside the other, only because the app declared them so. A view loads its own data and draws everything that is its own, including where it stands among its siblings.
 
-A view holds nothing of the views around it. Where it is shown is a path, `Path<V>`: the view's value and, above it, the path of its parent, up to the root view. The library parses a URL into a path, a path prints itself back as that URL, and a view renders at its path (`render(at: &Path<Self>, ..)`), from which it reads its own fields, reaches its ancestors' values (`at.parent()`) and makes the paths of the views beside it (`at.parent().to(..)`) and nested in it (`at.to(..)`). A path is the only way to a URL: a link made from one cannot point at a route that does not exist, and no address is put together as a string.
+A view holds nothing of the views around it. Where it is shown is a path, `ViewPath<V>`: the view's value and, above it, the path of its parent, up to the root view. The library parses a URL into a path, a path prints itself back as that URL, and a view renders at its path (`render(at: &ViewPath<Self>, ..)`), from which it reads its own fields, reaches its ancestors' values (`at.parent()`) and makes the paths of the views beside it (`at.parent().to(..)`) and nested in it (`at.to(..)`). A path is the only way to a URL: a link made from one cannot point at a route that does not exist, and no address is put together as a string.
 
 ## Considered Options
 

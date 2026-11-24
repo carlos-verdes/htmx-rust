@@ -1,4 +1,4 @@
-# use htmx_rust::{Html, NoParent, Outlet, Path, View};
+# use htmx_rust::{Html, NoParent, Outlet, ViewPath, View};
 # use serde::{Deserialize, Serialize};
 #
 # #[derive(Default, Serialize, Deserialize)]
@@ -8,7 +8,7 @@
 #     type State = ();
 #     type Parent = NoParent;
 #
-#     async fn render(_: &Path<Self>, _: &(), _: Outlet) -> impl Into<Html> {
+#     async fn render(_: &ViewPath<Self>, _: &(), _: Outlet) -> impl Into<Html> {
 #         Html::default()
 #     }
 # }
@@ -24,7 +24,7 @@
 #     type Parent = Document;
 #     const PATH: &'static str = "/catalogs/{catalog_id}";
 #
-#     async fn render(_: &Path<Self>, _: &(), _: Outlet) -> impl Into<Html> {
+#     async fn render(_: &ViewPath<Self>, _: &(), _: Outlet) -> impl Into<Html> {
 #         Html::default()
 #     }
 # }
@@ -39,7 +39,7 @@
 #     type Parent = Catalog;
 #     const PATH: &'static str = "/items/{item_id}";
 #
-#     async fn render(_: &Path<Self>, _: &(), _: Outlet) -> impl Into<Html> {
+#     async fn render(_: &ViewPath<Self>, _: &(), _: Outlet) -> impl Into<Html> {
 #         Html::default()
 #     }
 # }
