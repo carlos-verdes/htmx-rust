@@ -77,16 +77,13 @@ test('links between nested views change the address and what is shown inside the
   page,
   javaScriptEnabled,
 }) => {
+  // A catalog's own address opens its first tab, at that tab's address.
   await page.goto('/catalogs/2');
-  await catalog(page, 'Summer teas').expectShown();
-  await expect(page.getByRole('heading', { level: 2 })).toHaveCount(0);
+  await expectItems(page, '/catalogs/2/items', 'Items');
   const loads: string[] = [];
   page.on('request', (request) => {
     if (request.resourceType() === 'document') loads.push(request.url());
   });
-
-  await page.getByRole('link', { name: 'Items' }).click();
-  await expectItems(page, '/catalogs/2/items', 'Items');
 
   await page.getByRole('link', { name: 'Cold brew green' }).click();
   await expectItems(page, '/catalogs/2/items/Cold%20brew%20green', 'Item', 'Cold brew green');
@@ -96,7 +93,7 @@ test('links between nested views change the address and what is shown inside the
   await expectItems(page, '/catalogs/2/items/Iced%20oolong', 'Item', 'Iced oolong');
 
   // htmx fetches and swaps; without JavaScript each click loads a document.
-  expect(loads).toHaveLength(javaScriptEnabled ? 0 : 3);
+  expect(loads).toHaveLength(javaScriptEnabled ? 0 : 2);
 
   await page.goBack();
   await expectItems(page, '/catalogs/2/items/Cold%20brew%20green', 'Item', 'Cold brew green');
@@ -111,4 +108,9 @@ test('links between nested views change the address and what is shown inside the
   await catalog(page, 'Summer teas').expectShown();
   await expect(page.getByRole('heading', { level: 2 })).toHaveText('Tags');
   await expect(page.getByRole('heading', { level: 3 })).toHaveCount(0);
+  await expectOpenTab(page, 'Tags');
+
+  // And back: each tab's answer brings the tabs with it, the open one marked.
+  await page.getByRole('link', { name: 'Items' }).click();
+  await expectItems(page, '/catalogs/2/items', 'Items');
 });

@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 /** The names of the catalogs listed. */
 function listed(page: Page) {
-  return page.locator('main').getByRole('listitem').getByRole('link');
+  return page.locator('main').getByRole('listitem').getByRole('link').filter({ hasNotText: /^Remove / });
 }
 
 /** The catalogs listed are exactly these, and the form shows what was searched. */
@@ -67,13 +67,13 @@ test('a result links to its resource, at an address that can be refreshed', asyn
   await page.goto('/catalogs?q=coffee');
   await expectCatalogs(page, '/catalogs?q=coffee', 'coffee', ['Autumn coffees', 'Winter coffees']);
 
-  await page.getByRole('link', { name: 'Winter coffees' }).click();
+  await page.getByRole('link', { name: 'Winter coffees', exact: true }).click();
 
   const heading = page.locator('main').getByRole('heading', { level: 1 });
-  await expect(page).toHaveURL('/catalogs/4');
+  await expect(page).toHaveURL('/catalogs/4/items');
   await expect(heading).toHaveText('Winter coffees');
   await page.reload();
-  await expect(page).toHaveURL('/catalogs/4');
+  await expect(page).toHaveURL('/catalogs/4/items');
   await expect(heading).toHaveText('Winter coffees');
 
   await page.goBack();

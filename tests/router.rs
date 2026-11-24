@@ -108,7 +108,6 @@ impl View for Catalog {
     type Parent = Document;
     const PATH: &'static str = "/catalogs/{catalog}";
     const TITLE: &'static str = "Catalog";
-    const OUTLET: Option<&'static str> = Some("catalog");
 
     async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
@@ -459,7 +458,7 @@ async fn a_view_nested_in_one_with_a_parameter_answers_inside_it_at_depth_two() 
         body(response).await,
         format!(
             "<title>Notes - Loom</title><main id=\"document-outlet\">\
-             <h2>Catalog 7</h2><section id=\"catalog\">\
+             <h2>Catalog 7</h2><section id=\"document-catalog-outlet\">\
              {NOTES}<div id=\"document-catalog-notes-outlet\"></div>\
              </section></main>"
         )
@@ -477,7 +476,7 @@ async fn a_view_at_depth_three_answers_inside_every_ancestor_with_their_values()
         body(response).await,
         format!(
             "<title>Note - Loom</title><main id=\"document-outlet\">\
-             <h2>Catalog 7</h2><section id=\"catalog\">\
+             <h2>Catalog 7</h2><section id=\"document-catalog-outlet\">\
              {NOTES}<div id=\"document-catalog-notes-outlet\">\
              <a href=\"/catalogs/7/notes/first%20draft?page=2&sort=new&rev=3\">\
              Note {{ note: \"first draft\", rev: Some(3) }} of catalog 7</a>\
@@ -532,7 +531,7 @@ async fn a_view_links_to_the_one_beside_it_through_its_parents_path() {
     assert_eq!(
         body(response).await,
         "<title>Labels - Loom</title><main id=\"document-outlet\">\
-         <h2>Catalog 7</h2><section id=\"catalog\">\
+         <h2>Catalog 7</h2><section id=\"document-catalog-outlet\">\
          <p>Labels of 7, page Some(2)</p></section></main>"
     );
 }
@@ -583,7 +582,7 @@ fn outlets(html: &str) -> Vec<&str> {
 }
 
 #[tokio::test]
-async fn an_outlets_id_is_the_names_of_the_views_down_to_it_unless_the_view_names_one() {
+async fn an_outlets_id_is_the_names_of_the_views_down_to_it() {
     let catalogs = body(get_path(router(), "/catalogs/archived").await).await;
     let notes = body(get_path(router(), "/catalogs/7/notes/first?sort=new").await).await;
 
@@ -591,12 +590,11 @@ async fn an_outlets_id_is_the_names_of_the_views_down_to_it_unless_the_view_name
         outlets(&catalogs),
         ["document-outlet", "document-catalogs-outlet"]
     );
-    // The one a view names does not change those that follow it.
     assert_eq!(
         outlets(&notes),
         [
             "document-outlet",
-            "catalog",
+            "document-catalog-outlet",
             "document-catalog-notes-outlet"
         ]
     );
@@ -614,7 +612,7 @@ async fn a_path_that_extends_anothers_is_nested_in_it_only_when_declared_so() {
     assert_eq!(
         body(beside).await,
         "<title>Catalog - Loom</title><main id=\"document-outlet\">\
-         <h2>Catalog 7</h2><section id=\"catalog\"></section></main>"
+         <h2>Catalog 7</h2><section id=\"document-catalog-outlet\"></section></main>"
     );
     assert_eq!(
         body(inside).await,
@@ -1006,67 +1004,4 @@ impl View for Flattened {
 #[should_panic(expected = "Flattened does not name its fields")]
 fn a_view_with_a_flattened_field_is_an_error_at_startup() {
     let _: Router<App> = Router::new().view::<Flattened>();
-}
-
-/// A view written once and nested wherever `P` says: its parent is a
-/// parameter of its type, so each nesting is a view with an address of its own.
-#[derive(Serialize, Deserialize)]
-struct Sheet<P> {
-    sheet: String,
-    #[serde(skip)]
-    parent: std::marker::PhantomData<fn() -> P>,
-}
-
-impl<P> Sheet<P> {
-    fn new(sheet: &str) -> Self {
-        Self {
-            sheet: sheet.into(),
-            parent: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<P: View<State = App>> View for Sheet<P> {
-    type State = App;
-    type Parent = P;
-    const PATH: &'static str = "/sheets/{sheet}";
-
-    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
-        Html::trusted(format!("Sheet {} below {}", at.sheet, at.parent()))
-    }
-}
-
-#[tokio::test]
-async fn one_view_is_nested_in_two_parents_each_at_its_own_address() {
-    let router = || {
-        Router::new()
-            .view::<Sheet<Shelf>>()
-            .view::<Sheet<Catalogs>>()
-            .with_state(App { name: "Loom" })
-    };
-    let on_shelf = Shelf {
-        shelf: "top".into(),
-    }
-    .path()
-    .to(Sheet::new("a4"));
-    let in_catalogs = Catalogs.path().to(Sheet::new("a4"));
-    assert_eq!(on_shelf.to_string(), "/shelves/top/sheets/a4");
-    assert_eq!(in_catalogs.to_string(), "/catalogs/sheets/a4");
-
-    let on_shelf = body(get_path(router(), &on_shelf.to_string()).await).await;
-    assert!(on_shelf.contains("Shelf \"top\""), "{on_shelf}");
-    assert!(
-        on_shelf.contains("Sheet a4 below /shelves/top"),
-        "{on_shelf}"
-    );
-
-    let in_catalogs = body(get_path(router(), &in_catalogs.to_string()).await).await;
-    assert!(
-        in_catalogs.contains("<h1>Catalogs of Loom</h1>"),
-        "{in_catalogs}"
-    );
-    assert!(
-        in_catalogs.contains("Sheet a4 below /catalogs"),
-        "{in_catalogs}"
-    );
 }

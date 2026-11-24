@@ -53,12 +53,6 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// registered.
     const PATH: &'static str = "";
 
-    /// The id of this view's outlet. By default it is made of the names of the
-    /// views from the root view down to this one: `document-outlet` for a root
-    /// view `Document`, `document-catalog-outlet` for a `Catalog` nested in
-    /// it. No two outlets of a document share one.
-    const OUTLET: Option<&'static str> = None;
-
     /// The title of this view, which every view around it receives when it is
     /// shown.
     const TITLE: &'static str = "";
@@ -156,10 +150,12 @@ impl<V: View> ViewPath<V> {
     }
 }
 
-/// The id of a view's outlet: the one it names, or one made of the names of the
-/// views down to it.
+/// The id of a view's outlet: the names of the views from the root view down to
+/// it, as their types spell them, so no two outlets share one. A root view
+/// `Document` has `document-outlet`, a `Catalog` nested in it
+/// `document-catalog-outlet`.
 fn outlet<V: View>() -> String {
-    V::OUTLET.map_or_else(|| format!("{}-outlet", V::name()), Into::into)
+    format!("{}-outlet", V::name())
 }
 
 /// A path is shared, not copied: views need not be `Clone`.

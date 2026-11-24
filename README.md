@@ -119,7 +119,7 @@ assert_eq!(item.to_string(), "/catalogs/7/items/3");
 
 A view derives serde's `Serialize` and `Deserialize`: that is how its fields are read from a URL and printed back. A URL that does not parse into the fields, such as `/catalogs/seven`, is answered with `400 Bad Request` and no view runs.
 
-Nesting is declared, never read from the path: `/catalogs/7` extends `/catalogs`, and is still shown beside it in the root view's outlet, because `Catalog` names `Document` as its parent. An outlet's id is made of the names of the views down to it (`document-outlet`, `document-catalog-outlet`, …), so no two outlets share one, unless the view names one: `const OUTLET: Option<&'static str> = Some("catalog");`.
+Nesting is declared, never read from the path: `/catalogs/7` extends `/catalogs`, and is still shown beside it in the root view's outlet, because `Catalog` names `Document` as its parent. An outlet's id is made of the names of the views down to it (`document-outlet`, `document-catalog-outlet`, …), so no two outlets share one.
 
 A URL is never written by hand. It is a `ViewPath`: a view value and, above it, the path of its parent. What the compiler refuses:
 
@@ -128,7 +128,7 @@ A URL is never written by hand. It is a `ViewPath`: a view value and, above it, 
 
 What stops the app when a view is registered: a parameter in a view's `PATH` with no field of that view, a field named as one of an ancestor's, and a nested view with no `PATH`. Every view on the way down is read from the same URL, so a name is used once on the way: `catalog_id` and `item_id`, not `id` twice.
 
-A view is a resource, so its address is its own: a view nested in another adds a part to the path. Only the root view has none, being the document around every other view. What needs no address is not a view: a function that draws markup, or a region.
+A view is a resource with one address, its own: a view nested in another adds a part to the path. Only the root view has none, being the document around every other view. What needs no address is not a view: a function that draws markup, or a region.
 
 ## REST, as it was meant
 
