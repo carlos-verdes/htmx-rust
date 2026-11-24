@@ -8,7 +8,7 @@ use axum::{
     response::Response,
     routing::get,
 };
-use htmx_rust::{Html, Outlet, Root, View, Views};
+use htmx_rust::{Html, NoParent, Outlet, View, Views};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -20,7 +20,7 @@ struct App {
 struct Document;
 
 impl View<App> for Document {
-    type Parent = Root;
+    type Parent = NoParent;
 
     async fn render(app: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
@@ -50,7 +50,7 @@ impl View<App> for Catalogs {
     }
 }
 
-/// A section of [`Catalogs`].
+/// A view nested in [`Catalogs`].
 struct Archived;
 
 impl View<App> for Archived {
@@ -94,7 +94,7 @@ async fn body(response: Response) -> String {
 }
 
 #[tokio::test]
-async fn a_page_answers_at_its_path_inside_the_outermost_view() {
+async fn a_view_answers_at_its_path_inside_the_root_view() {
     let response = get_path(router(), "/catalogs").await;
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -107,7 +107,7 @@ async fn a_page_answers_at_its_path_inside_the_outermost_view() {
 }
 
 #[tokio::test]
-async fn a_section_answers_at_its_ancestors_path_and_its_own_inside_them() {
+async fn a_nested_view_answers_at_its_ancestors_path_and_its_own_inside_them() {
     let response = get_path(router(), "/catalogs/archived").await;
 
     assert_eq!(response.status(), StatusCode::OK);
@@ -160,7 +160,7 @@ mod with_maud {
     struct MaudDocument;
 
     impl View<App> for MaudDocument {
-        type Parent = Root;
+        type Parent = NoParent;
 
         async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {
             html! {

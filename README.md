@@ -6,18 +6,18 @@ Server-rendered Rust web apps with [htmx](https://htmx.org) and [axum](https://g
 
 ```rust
 use axum::Router;
-use htmx_rust::{Html, Outlet, Root, View, Views};
+use htmx_rust::{Html, NoParent, Outlet, View, Views};
 use maud::{DOCTYPE, html};
 
 #[derive(Clone)]
 struct App;
 
-/// The outermost view: the whole document, around its outlet. It has no
-/// parent and no path.
+/// The root view: the whole document, around its outlet. It has no parent
+/// and no path.
 struct Document;
 
 impl View<App> for Document {
-    type Parent = Root;
+    type Parent = NoParent;
 
     async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {
         html! {
@@ -28,7 +28,7 @@ impl View<App> for Document {
     }
 }
 
-/// A page: what `/catalogs` shows, in the document's outlet.
+/// What `/catalogs` shows, in the root view's outlet.
 struct Catalogs;
 
 impl View<App> for Catalogs {
@@ -60,7 +60,7 @@ REST describes the web of pages, links and forms. htmx-rust holds an app to its 
 
 ## Principles
 
-- **URL as state.** A link opens a page, or a section inside it, and the address bar always says what is on screen.
+- **URL as state.** A link opens a view, or a view nested inside it, and the address bar always says what is on screen.
 - **Convention over configuration.** Sensible defaults first; every one of them can be overridden.
 - **The server leads.** The server decides what each response contains; the browser shows it.
 - **Unopinionated core.** The core writes no HTML and chooses no styling. [maud](https://maud.lambda.xyz) is supported out of the box and can be switched off.

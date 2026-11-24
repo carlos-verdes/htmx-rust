@@ -6,11 +6,11 @@ use crate::Html;
 
 /// What one URL path shows, nested in its [`Parent`](View::Parent).
 pub trait View<S>: 'static {
-    /// The view this one is shown in. The outermost view names [`Root`].
+    /// The view this one is shown in. The root view names [`NoParent`].
     type Parent: View<S>;
 
     /// This view's part of the path, which follows its ancestors' parts. The
-    /// outermost view has none.
+    /// root view has none.
     const PATH: &'static str = "";
 
     /// The title of this view, which every view around it receives when it is
@@ -21,7 +21,7 @@ pub trait View<S>: 'static {
     /// engine's output, such as maud markup, as it is.
     fn render(state: &S, outlet: Outlet) -> impl Future<Output = impl Into<Html>> + Send;
 
-    /// How many views there are from the outermost down to this one.
+    /// How many views there are from the root view down to this one.
     #[doc(hidden)]
     const DEPTH: usize = Self::Parent::DEPTH + 1;
 
@@ -48,12 +48,13 @@ pub trait View<S>: 'static {
     }
 }
 
-/// The parent of the outermost view: the one view with no parent. It shows
-/// nothing of its own.
-pub struct Root;
+/// What the root view names as its parent. It stands for the end of the chain
+/// and cannot be registered.
+pub struct NoParent;
 
-impl<S: Sync> View<S> for Root {
-    type Parent = Root;
+#[doc(hidden)]
+impl<S: Sync> View<S> for NoParent {
+    type Parent = NoParent;
     const DEPTH: usize = 0;
 
     async fn render(_: &S, outlet: Outlet) -> impl Into<Html> {
@@ -83,7 +84,7 @@ pub struct Outlet {
 /// Registers views on an [`axum::Router`], beside its ordinary routes.
 pub trait Views<S> {
     /// Answers GET requests to the view's path with the whole document: the
-    /// view in its parent's outlet, and so on up to the outermost view.
+    /// view in its parent's outlet, and so on up to the root view.
     ///
     /// # Panics
     ///
@@ -93,6 +94,7 @@ pub trait Views<S> {
 
 impl<S: Clone + Send + Sync + 'static> Views<S> for Router<S> {
     fn view<V: View<S>>(self) -> Self {
+        const { assert!(V::DEPTH > 0, "NoParent is not a view to register") };
         self.route(
             &V::full_path(),
             get(|State(state): State<S>| async move {

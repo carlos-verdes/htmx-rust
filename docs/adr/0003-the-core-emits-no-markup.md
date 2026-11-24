@@ -6,4 +6,4 @@ The core routes and cuts; it writes no HTML of its own and never puts data into 
 
 - **maud in every signature**: simplest today, but adding a second engine later would break every signature.
 - **Plain `String`**: nothing would tell rendered HTML from text a reader typed.
-- **A default outermost view in the core**: a new app would work sooner, but the library would be choosing markup and styling. That belongs to a starter the app copies or extends, outside the core.
+- **A default root view in the core**: a new app would work sooner, but the library would be choosing markup and styling. That belongs to a starter the app copies or extends, outside the core.
