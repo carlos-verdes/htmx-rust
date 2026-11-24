@@ -174,6 +174,18 @@ impl<V: View> Deref for ViewPath<V> {
 /// own view's fields, then every view's other fields as the one query string.
 impl<V: View> Display for ViewPath<V> {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        let (path, query) = self.print();
+        formatter.write_str(&path)?;
+        match query {
+            query if query.is_empty() => Ok(()),
+            query => write!(formatter, "?{query}"),
+        }
+    }
+}
+
+impl<V: View> ViewPath<V> {
+    /// The path and the query string this path prints as.
+    fn print(&self) -> (String, String) {
         let mut path = V::route();
         let mut query = Serializer::new(String::new());
         V::print(self, &mut path, &mut query);
@@ -182,11 +194,7 @@ impl<V: View> Display for ViewPath<V> {
             "{} has no field for a parameter of its path: {path}",
             std::any::type_name::<V>()
         );
-        formatter.write_str(&path)?;
-        match query.finish() {
-            query if query.is_empty() => Ok(()),
-            query => write!(formatter, "?{query}"),
-        }
+        (path, query.finish())
     }
 }
 
@@ -247,11 +255,13 @@ mod chain {
         fn print(at: &Self::ViewPath, path: &mut String, query: &mut Serializer<'_, String>);
 
         /// Renders this view around `content`, and its ancestors around it.
+        /// `shown` is the path of the view the content is of.
         fn show(
             at: &Self::ViewPath,
             state: &S,
             content: Html,
             title: &'static str,
+            shown: Option<String>,
         ) -> impl Future<Output = Html> + Send;
     }
 
@@ -271,7 +281,13 @@ mod chain {
 
         fn print(_: &NoParent, _: &mut String, _: &mut Serializer<'_, String>) {}
 
-        async fn show(_: &NoParent, _: &S, content: Html, _: &'static str) -> Html {
+        async fn show(
+            _: &NoParent,
+            _: &S,
+            content: Html,
+            _: &'static str,
+            _: Option<String>,
+        ) -> Html {
             content
         }
     }
@@ -308,14 +324,16 @@ mod chain {
             state: &V::State,
             content: Html,
             title: &'static str,
+            shown: Option<String>,
         ) -> Html {
             let outlet = Outlet {
                 id: V::OUTLET.map_or_else(|| format!("outlet-{}", V::Parent::DEPTH), Into::into),
                 content,
                 title,
+                shown,
             };
             let content = V::render(at, state, outlet).await.into();
-            V::Parent::show(&at.0.1, state, content, title).await
+            V::Parent::show(&at.0.1, state, content, title, Some(at.print().0)).await
         }
     }
 }
@@ -329,6 +347,30 @@ pub struct Outlet {
     pub content: Html,
     /// The title of the view the URL names: the innermost one.
     pub title: &'static str,
+    /// The path of the nested view, without its query string.
+    shown: Option<String>,
+}
+
+impl Outlet {
+    /// An outlet as the library hands one to a view, with nothing nested known
+    /// to be [shown](Outlet::shows) in it.
+    pub fn new(id: impl Into<String>, content: Html, title: &'static str) -> Self {
+        Self {
+            id: id.into(),
+            content,
+            title,
+            shown: None,
+        }
+    }
+
+    /// Whether the view at `path` is the one shown in this outlet, as the URL
+    /// says: the view nested here, whatever is nested further in it. A view
+    /// marks with it the link to what is open, such as a tab.
+    ///
+    /// The query string plays no part: a search in the open view is still it.
+    pub fn shows<V: View>(&self, path: &ViewPath<V>) -> bool {
+        self.shown.as_deref() == Some(&path.print().0)
+    }
 }
 
 /// Registers views on an [`axum::Router`], beside its ordinary routes.
@@ -358,7 +400,7 @@ impl<S: Clone + Send + Sync + 'static> Views<S> for Router<S> {
                 |State(state): State<S>, parameters: RawPathParams, RawQuery(query): RawQuery| async move {
                     let at = V::parse(&url::fields(&parameters, query.as_deref()))
                         .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-                    let document = V::show(&at, &state, Html::default(), V::TITLE).await;
+                    let document = V::show(&at, &state, Html::default(), V::TITLE, None).await;
                     Ok::<_, (StatusCode, String)>(axum::response::Html(String::from(document)))
                 },
             ),
