@@ -5,8 +5,11 @@ use std::{env, fs};
 
 use axum::{
     Router,
-    http::header::CONTENT_TYPE,
-    response::Redirect,
+    http::{
+        StatusCode,
+        header::{CONTENT_TYPE, LOCATION},
+    },
+    response::{IntoResponse, Redirect},
     routing::{get, post},
 };
 use htmx_rust::{Html, NoParent, Outlet, View, Views};
@@ -87,6 +90,9 @@ impl View for Home {
             form method="post" action=(Catalogs::default().url()) {
                 button { "Start a catalog" }
             }
+            form method="post" action="/catalogs/clear" {
+                button { "Clear the catalogs" }
+            }
         }
     }
 }
@@ -154,6 +160,31 @@ impl View for Catalog {
     }
 }
 
+/// Answers `201 Created` with the whole document around a message. Actions
+/// will draw their answer in place themselves; until then the root view is
+/// rendered by hand, and `Location` names the collection because nothing is
+/// stored yet.
+async fn create_catalog() -> impl IntoResponse {
+    let outlet = Outlet {
+        id: "outlet-0".into(),
+        content: html! {
+            h1 { "Catalog created" }
+            p { a href=(Catalogs::default().url()) { "See the catalogs" } }
+        }
+        .into(),
+        title: "Catalog created",
+    };
+    let document: Html = Document.render(&(), outlet).await.into();
+    (
+        StatusCode::CREATED,
+        [
+            (LOCATION, Catalogs::default().url()),
+            (CONTENT_TYPE, "text/html; charset=utf-8".into()),
+        ],
+        document.as_str().to_owned(),
+    )
+}
+
 #[tokio::main]
 async fn main() {
     let htmx = fs::read_to_string(HTMX).unwrap_or_else(|error| {
@@ -164,10 +195,10 @@ async fn main() {
         .view::<Home>()
         .view::<Catalogs>()
         .view::<Catalog>()
-        // Ordinary axum routes, beside the views. Nothing is stored yet: the
-        // form's answer is where the catalogs are.
+        // Ordinary axum routes, beside the views. Nothing is stored yet.
+        .route("/catalogs", post(create_catalog))
         .route(
-            "/catalogs",
+            "/catalogs/clear",
             post(|| async { Redirect::to(&Catalogs::default().url()) }),
         )
         .route(

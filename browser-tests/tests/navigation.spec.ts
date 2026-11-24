@@ -68,7 +68,7 @@ test('a posted form answered with 303 ends on the view it redirects to', async (
   const loads = documentLoads(page);
   const answer = page.waitForResponse((response) => response.request().method() === 'POST');
 
-  await page.getByRole('button', { name: 'Start a catalog' }).click();
+  await page.getByRole('button', { name: 'Clear the catalogs' }).click();
 
   expect((await answer).status()).toBe(303);
   await expectView(page, '/catalogs', 'Catalogs');
@@ -80,5 +80,24 @@ test('a posted form answered with 303 ends on the view it redirects to', async (
   await expectView(page, '/', 'Home');
   await page.goForward();
   await page.reload();
+  await expectView(page, '/catalogs', 'Catalogs');
+});
+
+test('a posted form answered with 201 shows the answer in the outlet', async ({
+  page,
+  javaScriptEnabled,
+}) => {
+  await page.goto('/');
+  const loads = documentLoads(page);
+  const answer = page.waitForResponse((response) => response.request().method() === 'POST');
+
+  await page.getByRole('button', { name: 'Start a catalog' }).click();
+
+  expect((await answer).status()).toBe(201);
+  // The answer is shown at the address the form posted to, the collection's.
+  await expectView(page, '/catalogs', 'Catalog created');
+  expect(loads).toHaveLength(javaScriptEnabled ? 0 : 1);
+
+  await page.getByRole('link', { name: 'See the catalogs' }).click();
   await expectView(page, '/catalogs', 'Catalogs');
 });
