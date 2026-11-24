@@ -1,5 +1,5 @@
 [workspace]
-members = ["."]
+members = [".", "demo"]
 
 [package]
 name = "htmx-rust"
@@ -12,6 +12,7 @@ homepage = "https://github.com/funkode-io/htmx-rust"
 readme = "README.md"
 keywords = ["htmx", "maud", "ssr", "web", "axum"]
 categories = ["web-programming"]
+exclude = ["/browser-tests"]
 
 [features]
 default = ["maud"]
