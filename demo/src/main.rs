@@ -104,6 +104,8 @@ impl View for Document {
                 head {
                     meta charset="utf-8";
                     title { (outlet.title) }
+                    // The one style of the demo: the tab that is open.
+                    style { "[aria-current] { font-weight: bold; text-decoration: none }" }
                     script src="/htmx.js" defer {}
                 }
                 // Set once and inherited by every link and form below: htmx
@@ -260,11 +262,14 @@ impl View for Tabs {
     const TITLE: &'static str = "Catalog";
 
     async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+        // Which tab is open is told from the title of the view the URL names,
+        // until the library says which view is in an outlet.
+        let open = |titles: &[&str]| titles.contains(&outlet.title).then_some("page");
         html! {
             nav {
-                a href=(at.to(Items)) { "Items" }
+                a href=(at.to(Items)) aria-current=[open(&[Items::TITLE, Item::TITLE])] { "Items" }
                 " "
-                a href=(at.to(Tags)) { "Tags" }
+                a href=(at.to(Tags)) aria-current=[open(&[Tags::TITLE])] { "Tags" }
             }
             section id=(outlet.id) { (outlet.content) }
         }

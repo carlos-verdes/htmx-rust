@@ -18,6 +18,12 @@ function catalog(page: Page, name: string) {
   };
 }
 
+/** Of the catalog's tabs, `open` is the one marked as open, and the only one. */
+async function expectOpenTab(page: Page, open: string) {
+  const marked = page.locator('#outlet-1 > nav [aria-current]');
+  await expect(marked).toHaveText([open]);
+}
+
 /** The tags of "Spring teas" are shown inside its view. */
 async function expectTags(page: Page) {
   const { outlet, expectShown } = catalog(page, 'Spring teas');
@@ -26,6 +32,7 @@ async function expectTags(page: Page) {
   await expectShown();
   await expect(outlet.getByRole('heading', { level: 2 })).toHaveText('Tags');
   await expect(outlet.locator('section').getByRole('listitem')).toHaveText(['tea', 'hot']);
+  await expectOpenTab(page, 'Tags');
 }
 
 /** The items of "Summer teas" are shown inside its view, and inside them `item`, if any. */
@@ -41,6 +48,7 @@ async function expectItems(page: Page, path: string, title: string, item?: strin
   const shown = items.locator('ul + div').getByRole('heading', { level: 3 });
   if (item) await expect(shown).toHaveText(item);
   else await expect(shown).toHaveCount(0);
+  await expectOpenTab(page, 'Items');
 }
 
 test('a nested view opened at its address, and refreshed, is shown inside its parent', async ({
