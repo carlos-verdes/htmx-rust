@@ -11,6 +11,7 @@ use axum::{
 };
 use htmx_rust::{Html, NoParent, Outlet, View, Views};
 use maud::{DOCTYPE, html};
+use serde::{Deserialize, Serialize};
 
 /// htmx 4, where `pnpm install` puts it.
 const HTMX: &str = concat!(
@@ -18,14 +19,23 @@ const HTMX: &str = concat!(
     "/node_modules/htmx.org/dist/htmx.min.js"
 );
 
+/// The catalogs there are, each with its id. Nothing is stored yet.
+const CATALOGS: [(u32, &str); 4] = [
+    (1, "Spring teas"),
+    (2, "Summer teas"),
+    (3, "Autumn coffees"),
+    (4, "Winter coffees"),
+];
+
 /// The root view: the document, with the navigation around its outlet.
+#[derive(Serialize, Deserialize)]
 struct Document;
 
 impl View for Document {
     type State = ();
     type Parent = NoParent;
 
-    async fn render(_: &(), outlet: Outlet) -> impl Into<Html> {
+    async fn render(&self, _: &(), outlet: Outlet) -> impl Into<Html> {
         let target = format!("#{}", outlet.id);
         html! {
             (DOCTYPE)
@@ -49,9 +59,9 @@ impl View for Document {
                     hx-swap:inherited="outerHTML"
                 {
                     nav {
-                        a href="/" { "Home" }
+                        a href=(Home.url()) { "Home" }
                         " "
-                        a href="/catalogs" { "Catalogs" }
+                        a href=(Catalogs::default().url()) { "Catalogs" }
                     }
                     main id=(outlet.id) { (outlet.content) }
                 }
@@ -60,6 +70,7 @@ impl View for Document {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 struct Home;
 
 impl View for Home {
@@ -68,19 +79,25 @@ impl View for Home {
     const PATH: &'static str = "/";
     const TITLE: &'static str = "Home";
 
-    async fn render(_: &(), _: Outlet) -> impl Into<Html> {
+    async fn render(&self, _: &(), _: Outlet) -> impl Into<Html> {
         html! {
             h1 { "Home" }
             p { "Every address here shows the same thing on a click and on a refresh." }
-            p { a href="/catalogs" { "See the catalogs" } }
-            form method="post" action="/catalogs" {
+            p { a href=(Catalogs::default().url()) { "See the catalogs" } }
+            form method="post" action=(Catalogs::default().url()) {
                 button { "Start a catalog" }
             }
         }
     }
 }
 
-struct Catalogs;
+/// The collection: every catalog, or those the search in its URL finds.
+#[derive(Default, Serialize, Deserialize)]
+struct Catalogs {
+    /// What a catalog's name must contain. `/catalogs` searches for nothing.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    q: String,
+}
 
 impl View for Catalogs {
     type State = ();
@@ -88,11 +105,51 @@ impl View for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(_: &(), _: Outlet) -> impl Into<Html> {
+    async fn render(&self, _: &(), _: Outlet) -> impl Into<Html> {
+        let q = self.q.to_lowercase();
+        let found = CATALOGS
+            .iter()
+            .filter(|(_, name)| name.to_lowercase().contains(&q));
         html! {
             h1 { "Catalogs" }
-            p { "No catalogs yet." }
-            p { a href="/" { "Back home" } }
+            // A GET form is a link whose query string comes from its fields:
+            // each is named after a field of the view at its address.
+            form action=(Catalogs::default().url()) {
+                label { "Name " input type="search" name="q" value=(self.q); }
+                " "
+                button { "Search" }
+            }
+            ul {
+                @for &(id, name) in found {
+                    li { a href=(Catalog { id }.url()) { (name) } }
+                }
+            }
+            p { a href=(Home.url()) { "Back home" } }
+        }
+    }
+}
+
+/// One catalog, the resource its path parameter names.
+#[derive(Serialize, Deserialize)]
+struct Catalog {
+    id: u32,
+}
+
+impl View for Catalog {
+    type State = ();
+    type Parent = Document;
+    const PATH: &'static str = "/catalogs/{id}";
+    const TITLE: &'static str = "Catalog";
+
+    async fn render(&self, _: &(), _: Outlet) -> impl Into<Html> {
+        let name = CATALOGS.iter().find(|(id, _)| *id == self.id);
+        html! {
+            @match name {
+                Some((_, name)) => h1 { (name) },
+                // A missing resource is not yet a failure (ADR 4).
+                None => p { "There is no catalog " (self.id) "." },
+            }
+            p { a href=(Catalogs::default().url()) { "All catalogs" } }
         }
     }
 }
@@ -106,9 +163,13 @@ async fn main() {
     let router = Router::new()
         .view::<Home>()
         .view::<Catalogs>()
+        .view::<Catalog>()
         // Ordinary axum routes, beside the views. Nothing is stored yet: the
         // form's answer is where the catalogs are.
-        .route("/catalogs", post(|| async { Redirect::to("/catalogs") }))
+        .route(
+            "/catalogs",
+            post(|| async { Redirect::to(&Catalogs::default().url()) }),
+        )
         .route(
             "/htmx.js",
             get(|| async move { ([(CONTENT_TYPE, "text/javascript")], htmx) }),

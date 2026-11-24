@@ -8,4 +8,5 @@ publish = false
 axum = "0.8"
 htmx-rust = { path = ".." }
 maud = "0.27"
+serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread"] }
