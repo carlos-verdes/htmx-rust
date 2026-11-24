@@ -19,7 +19,8 @@ struct App {
 
 struct Document;
 
-impl View<App> for Document {
+impl View for Document {
+    type State = App;
     type Parent = NoParent;
 
     async fn render(app: &App, outlet: Outlet) -> impl Into<Html> {
@@ -35,7 +36,8 @@ impl View<App> for Document {
 
 struct Catalogs;
 
-impl View<App> for Catalogs {
+impl View for Catalogs {
+    type State = App;
     type Parent = Document;
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
@@ -53,7 +55,8 @@ impl View<App> for Catalogs {
 /// A view nested in [`Catalogs`].
 struct Archived;
 
-impl View<App> for Archived {
+impl View for Archived {
+    type State = App;
     type Parent = Catalogs;
     const PATH: &'static str = "/archived";
     const TITLE: &'static str = "Archived catalogs";
@@ -66,7 +69,8 @@ impl View<App> for Archived {
 /// A second view that claims the path of [`Catalogs`].
 struct AlsoCatalogs;
 
-impl View<App> for AlsoCatalogs {
+impl View for AlsoCatalogs {
+    type State = App;
     type Parent = Document;
     const PATH: &'static str = "/catalogs";
 
@@ -147,7 +151,8 @@ mod with_maud {
 
     struct Home;
 
-    impl View<App> for Home {
+    impl View for Home {
+        type State = App;
         type Parent = MaudDocument;
         const PATH: &'static str = "/";
         const TITLE: &'static str = "Home";
@@ -159,7 +164,8 @@ mod with_maud {
 
     struct MaudDocument;
 
-    impl View<App> for MaudDocument {
+    impl View for MaudDocument {
+        type State = App;
         type Parent = NoParent;
 
         async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {

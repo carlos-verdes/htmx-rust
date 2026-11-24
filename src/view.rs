@@ -5,9 +5,12 @@ use axum::{Router, extract::State, routing::get};
 use crate::Html;
 
 /// What one URL path shows, nested in its [`Parent`](View::Parent).
-pub trait View<S>: 'static {
-    /// The view this one is shown in. The root view names [`NoParent`].
-    type Parent: View<S>;
+pub trait View: 'static {
+    /// The application state this view renders with: the router's own.
+    type State: Sync;
+
+    /// The view this one is shown in, or [`NoParent`] for the root view.
+    type Parent: Parent<Self::State>;
 
     /// This view's part of the path, which follows its ancestors' parts. The
     /// root view has none.
@@ -19,54 +22,54 @@ pub trait View<S>: 'static {
 
     /// Declared as `async fn render(..) -> impl Into<Html>`, it returns an
     /// engine's output, such as maud markup, as it is.
-    fn render(state: &S, outlet: Outlet) -> impl Future<Output = impl Into<Html>> + Send;
+    fn render(state: &Self::State, outlet: Outlet) -> impl Future<Output = impl Into<Html>> + Send;
+}
 
+/// The parent of the root view: none. It is not a view.
+pub struct NoParent;
+
+/// What a view names as its parent: a [`View`] with the same state, or
+/// [`NoParent`].
+pub trait Parent<S> {
     /// How many views there are from the root view down to this one.
     #[doc(hidden)]
-    const DEPTH: usize = Self::Parent::DEPTH + 1;
+    const DEPTH: usize;
 
     #[doc(hidden)]
-    fn full_path() -> String {
-        Self::Parent::full_path() + Self::PATH
-    }
+    fn path() -> String;
 
     /// Renders this view around `content`, and its ancestors around it.
     #[doc(hidden)]
-    fn show(state: &S, content: Html, title: &'static str) -> impl Future<Output = Html> + Send
-    where
-        S: Sync,
-    {
-        async move {
-            let outlet = Outlet {
-                id: format!("outlet-{}", Self::Parent::DEPTH),
-                content,
-                title,
-            };
-            let content = Self::render(state, outlet).await.into();
-            Self::Parent::show(state, content, title).await
-        }
-    }
+    fn show(state: &S, content: Html, title: &'static str) -> impl Future<Output = Html> + Send;
 }
 
-/// What the root view names as its parent. It stands for the end of the chain
-/// and cannot be registered.
-pub struct NoParent;
-
-#[doc(hidden)]
-impl<S: Sync> View<S> for NoParent {
-    type Parent = NoParent;
+impl<S: Sync> Parent<S> for NoParent {
     const DEPTH: usize = 0;
 
-    async fn render(_: &S, outlet: Outlet) -> impl Into<Html> {
-        outlet.content
-    }
-
-    fn full_path() -> String {
+    fn path() -> String {
         String::new()
     }
 
     async fn show(_: &S, content: Html, _: &'static str) -> Html {
         content
+    }
+}
+
+impl<V: View> Parent<V::State> for V {
+    const DEPTH: usize = V::Parent::DEPTH + 1;
+
+    fn path() -> String {
+        V::Parent::path() + V::PATH
+    }
+
+    async fn show(state: &V::State, content: Html, title: &'static str) -> Html {
+        let outlet = Outlet {
+            id: format!("outlet-{}", V::Parent::DEPTH),
+            content,
+            title,
+        };
+        let content = V::render(state, outlet).await.into();
+        V::Parent::show(state, content, title).await
     }
 }
 
@@ -89,14 +92,13 @@ pub trait Views<S> {
     /// # Panics
     ///
     /// If the path already answers GET requests.
-    fn view<V: View<S>>(self) -> Self;
+    fn view<V: View<State = S>>(self) -> Self;
 }
 
 impl<S: Clone + Send + Sync + 'static> Views<S> for Router<S> {
-    fn view<V: View<S>>(self) -> Self {
-        const { assert!(V::DEPTH > 0, "NoParent is not a view to register") };
+    fn view<V: View<State = S>>(self) -> Self {
         self.route(
-            &V::full_path(),
+            &V::path(),
             get(|State(state): State<S>| async move {
                 let document = V::show(&state, Html::default(), V::TITLE).await;
                 axum::response::Html(String::from(document))

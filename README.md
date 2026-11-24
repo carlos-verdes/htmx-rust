@@ -16,7 +16,8 @@ struct App;
 /// and no path.
 struct Document;
 
-impl View<App> for Document {
+impl View for Document {
+    type State = App;
     type Parent = NoParent;
 
     async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {
@@ -31,7 +32,8 @@ impl View<App> for Document {
 /// What `/catalogs` shows, in the root view's outlet.
 struct Catalogs;
 
-impl View<App> for Catalogs {
+impl View for Catalogs {
+    type State = App;
     type Parent = Document;
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
