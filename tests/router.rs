@@ -1054,3 +1054,66 @@ impl View for Flattened {
 fn a_view_with_a_flattened_field_is_an_error_at_startup() {
     let _: Router<App> = Router::new().view::<Flattened>();
 }
+
+/// A view written once and nested wherever `P` says: its parent is a
+/// parameter of its type, so each nesting is a view with an address of its own.
+#[derive(Serialize, Deserialize)]
+struct Sheet<P> {
+    sheet: String,
+    #[serde(skip)]
+    parent: std::marker::PhantomData<fn() -> P>,
+}
+
+impl<P> Sheet<P> {
+    fn new(sheet: &str) -> Self {
+        Self {
+            sheet: sheet.into(),
+            parent: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<P: View<State = App>> View for Sheet<P> {
+    type State = App;
+    type Parent = P;
+    const PATH: &'static str = "/sheets/{sheet}";
+
+    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::trusted(format!("Sheet {} below {}", at.sheet, at.parent()))
+    }
+}
+
+#[tokio::test]
+async fn one_view_is_nested_in_two_parents_each_at_its_own_address() {
+    let router = || {
+        Router::new()
+            .view::<Sheet<Shelf>>()
+            .view::<Sheet<Catalogs>>()
+            .with_state(App { name: "Loom" })
+    };
+    let on_shelf = Shelf {
+        shelf: "top".into(),
+    }
+    .path()
+    .to(Sheet::new("a4"));
+    let in_catalogs = Catalogs.path().to(Sheet::new("a4"));
+    assert_eq!(on_shelf.to_string(), "/shelves/top/sheets/a4");
+    assert_eq!(in_catalogs.to_string(), "/catalogs/sheets/a4");
+
+    let on_shelf = body(get_path(router(), &on_shelf.to_string()).await).await;
+    assert!(on_shelf.contains("Shelf \"top\""), "{on_shelf}");
+    assert!(
+        on_shelf.contains("Sheet a4 below /shelves/top"),
+        "{on_shelf}"
+    );
+
+    let in_catalogs = body(get_path(router(), &in_catalogs.to_string()).await).await;
+    assert!(
+        in_catalogs.contains("<h1>Catalogs of Loom</h1>"),
+        "{in_catalogs}"
+    );
+    assert!(
+        in_catalogs.contains("Sheet a4 below /catalogs"),
+        "{in_catalogs}"
+    );
+}
