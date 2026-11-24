@@ -28,15 +28,16 @@ pub fn parse<T: DeserializeOwned>(fields: &str) -> Result<T, Error> {
     )))
 }
 
-/// Checks that every parameter of `path` has a field of `T` to fill it, and
-/// that none is named twice, so that a view that could not print its URL is
-/// found when it is registered. A type that does not name its fields
-/// (`#[serde(flatten)]`) is found when printed.
+/// Checks one view of a chain when it is registered: that every parameter of
+/// its `part` of the path has a field of `T` to fill it, and that none of its
+/// fields has the name of a field `seen` in an ancestor, since every view on a
+/// chain is read from the same fields of the URL. A type that does not name its
+/// fields (`#[serde(flatten)]`) is found when printed.
 ///
 /// # Panics
 ///
-/// If a parameter has no field of that name, or is named twice.
-pub fn check<T: DeserializeOwned>(path: &str) {
+/// If a parameter has no field of that name, or a field's name was `seen`.
+pub fn check<T: DeserializeOwned>(part: &str, seen: &mut Vec<(&'static str, &'static str)>) {
     /// Takes the names of the fields a type asks for, and nothing else.
     struct Names<'a>(&'a mut Option<&'static [&'static str]>);
 
@@ -72,61 +73,73 @@ pub fn check<T: DeserializeOwned>(path: &str) {
         }
     }
 
-    let parameters: Vec<&str> = path
-        .split('{')
-        .skip(1)
-        .filter_map(|rest| Some(rest.split_once('}')?.0))
-        .collect();
-    for (index, parameter) in parameters.iter().enumerate() {
-        assert!(
-            !parameters[..index].contains(parameter),
-            "{} names the parameter {{{parameter}}} twice in its path: {path}",
-            type_name::<T>()
-        );
-    }
+    let view = type_name::<T>();
     let mut names = None;
     let _ = T::deserialize(Names(&mut names));
     let Some(names) = names else { return };
-    for parameter in parameters {
+    let parameters = part.split('{').skip(1);
+    for parameter in parameters.filter_map(|rest| Some(rest.split_once('}')?.0)) {
         assert!(
             names.contains(&parameter),
-            "{} has no field for the parameter {{{parameter}}} of its path: {path}",
-            type_name::<T>()
+            "{view} has no field for the parameter {{{parameter}}} of its part of the path: {part}"
         );
+    }
+    for &name in names {
+        if let Some((_, ancestor)) = seen.iter().find(|(seen, _)| *seen == name) {
+            panic!(
+                "{view} and {ancestor}, which it is nested in, both have a field named \
+                 {name}: a name is used once on the way down"
+            );
+        }
+        seen.push((name, view));
     }
 }
 
-/// Prints `path` with its parameters filled from the fields of `value` that
-/// they name, then the other fields as the query string.
+/// Adds a view's `part` to the `path` of its ancestors. A last `/` gives way to
+/// a part that starts with one, and a path that is still empty is `/`.
+pub fn join(path: &mut String, part: &str) {
+    if part.starts_with('/') && path.ends_with('/') {
+        path.pop();
+    }
+    path.push_str(part);
+    if path.is_empty() {
+        path.push('/');
+    }
+}
+
+/// Prints one view of a chain: adds its `part` to `path`, with the parameters
+/// filled from the fields of `value` that they name, and its other fields to
+/// `query`.
 ///
 /// # Panics
 ///
-/// If a parameter of the path has no field to fill it, or the value is not made
+/// If a parameter of the part has no field to fill it, or the value is not made
 /// of named fields that each hold a plain value or a list of them.
-pub fn print<T: Serialize>(path: &str, value: &T) -> String {
+pub fn print<T: Serialize>(
+    part: &str,
+    value: &T,
+    path: &mut String,
+    query: &mut Serializer<'_, String>,
+) {
     let fields = serde_html_form::to_string(value)
         .unwrap_or_else(|error| panic!("{} does not print as a URL: {error}", type_name::<T>()));
-    let mut path = path.to_owned();
-    let mut query = Serializer::new(String::new());
+    let mut part = part.to_owned();
     for (name, value) in form_urlencoded::parse(fields.as_bytes()) {
         let parameter = format!("{{{name}}}");
-        if path.contains(&parameter) {
+        if part.contains(&parameter) {
             // In a path a space is `%20`: a `+` there stands for itself.
             let value = byte_serialize(value.as_bytes()).collect::<String>();
-            path = path.replace(&parameter, &value.replace('+', "%20"));
+            part = part.replace(&parameter, &value.replace('+', "%20"));
         } else {
             query.append_pair(&name, &value);
         }
     }
     assert!(
-        !path.contains('{'),
-        "{} has no field for a parameter of its path: {path}",
+        !part.contains('{'),
+        "{} has no field for a parameter of its part of the path: {part}",
         type_name::<T>()
     );
-    match query.finish() {
-        query if query.is_empty() => path,
-        query => format!("{path}?{query}"),
-    }
+    join(path, &part);
 }
 
 /// Reads fields as `serde_html_form` does, and also into a type that has none
