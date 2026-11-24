@@ -5,8 +5,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo clippy --all-targets --no-default-features -- -D warnings
       - run: cargo test
       - run: cargo test --no-default-features
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.14.0
+      - run: cargo build --package htmx-rust-demo
+      - run: pnpm install --frozen-lockfile
+        working-directory: demo
+      - run: pnpm install --frozen-lockfile
+        working-directory: browser-tests
+      - run: pnpm exec playwright install --with-deps chromium
+        working-directory: browser-tests
+      - run: pnpm test
+        working-directory: browser-tests
