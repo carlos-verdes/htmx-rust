@@ -36,8 +36,9 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// URL. So a parameter's name is used once on the way down.
     ///
     /// The parts are joined as they are, except that a part's last `/` gives
-    /// way to the next part: a view at `"/activity"` nested in one at `"/"` is
-    /// at `/activity`. A view whose whole path is empty is at `/`.
+    /// way to a next part that starts with one: a view at `"/activity"` nested
+    /// in one at `"/"` is at `/activity`. A view whose whole path is empty is
+    /// at `/`.
     const PATH: &'static str = "";
 
     /// The id of this view's outlet. By default it follows the view's depth:
@@ -149,7 +150,12 @@ mod chain {
         type Views = (V, <V::Parent as Chain<V::State>>::Views);
 
         fn path() -> String {
-            let path = V::Parent::path().trim_end_matches('/').to_owned() + V::PATH;
+            let parent = V::Parent::path();
+            let parent = match V::PATH.starts_with('/') {
+                true => parent.strip_suffix('/').unwrap_or(&parent),
+                false => &parent,
+            };
+            let path = parent.to_owned() + V::PATH;
             if path.is_empty() { "/".into() } else { path }
         }
 

@@ -222,6 +222,20 @@ impl View for Activity {
     }
 }
 
+/// A view nested in [`Home`] whose part of the path starts with no `/`.
+#[derive(Serialize, Deserialize)]
+struct Recent;
+
+impl View for Recent {
+    type State = App;
+    type Parent = Home;
+    const PATH: &'static str = "recent";
+
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        Html::trusted(format!("<a href=\"{}\">Recent</a>", self.url()))
+    }
+}
+
 /// A view that links to another, from a value.
 #[derive(Serialize, Deserialize)]
 struct Featured;
@@ -280,6 +294,7 @@ fn router() -> Router {
         .view::<Note>()
         .view::<Home>()
         .view::<Activity>()
+        .view::<Recent>()
         .view::<Entry>()
         .view::<Featured>()
         .route("/health", get(|| async { "ok" }))
@@ -385,6 +400,18 @@ async fn a_path_that_extends_anothers_is_nested_in_it_only_when_declared_so() {
         body(inside).await,
         "<title>Catalog - Loom</title><main id=\"outlet-0\">\
          <h1>Catalogs of Loom</h1><div id=\"outlet-1\"><h2>Catalog 7</h2></div></main>"
+    );
+}
+
+#[tokio::test]
+async fn a_parents_last_slash_is_kept_when_the_next_part_starts_with_none() {
+    let response = get_path(router(), "/recent").await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert!(
+        body(response)
+            .await
+            .contains("<a href=\"/recent\">Recent</a>")
     );
 }
 
