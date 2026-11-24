@@ -192,39 +192,17 @@ impl View for Labels {
     }
 }
 
-/// A view nested in [`Catalog`] with no part of the path of its own: it is
-/// only there to draw, around its outlet, the links to the views nested in it.
+/// A view nested in [`Catalog`] with no part of the path of its own: its
+/// address would be the catalog's.
 #[derive(Serialize, Deserialize)]
 struct Tabs;
 
 impl View for Tabs {
     type State = App;
     type Parent = Catalog;
-    const TITLE: &'static str = "Tabs";
 
-    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
-        Html::trusted(format!(
-            "<nav><a href=\"{}\">Summary</a></nav><div id=\"{}\">{}</div>",
-            at.to(Summary),
-            outlet.id,
-            outlet.content.as_str()
-        ))
-    }
-}
-
-/// A view nested in [`Tabs`], and so, at depth three, in [`Catalog`].
-#[derive(Serialize, Deserialize)]
-struct Summary;
-
-impl View for Summary {
-    type State = App;
-    type Parent = Tabs;
-    const PATH: &'static str = "/summary";
-    const TITLE: &'static str = "Summary";
-
-    async fn render(at: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
-        let catalog = at.parent().parent().catalog;
-        Html::trusted(format!("<p>Summary of {catalog}</p>"))
+    async fn render(_: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+        outlet.content
     }
 }
 
@@ -423,7 +401,6 @@ fn router() -> Router {
         .view::<Notes>()
         .view::<Note>()
         .view::<Labels>()
-        .view::<Summary>()
         .view::<Home>()
         .view::<Activity>()
         .view::<Recent>()
@@ -451,8 +428,8 @@ async fn a_view_answers_at_its_path_inside_the_root_view() {
     assert_eq!(response.headers()[CONTENT_TYPE], "text/html; charset=utf-8");
     assert_eq!(
         body(response).await,
-        "<title>Catalogs - Loom</title><main id=\"outlet-0\">\
-         <h1>Catalogs of Loom</h1><div id=\"outlet-1\"></div></main>"
+        "<title>Catalogs - Loom</title><main id=\"document-outlet\">\
+         <h1>Catalogs of Loom</h1><div id=\"document-catalogs-outlet\"></div></main>"
     );
 }
 
@@ -463,8 +440,8 @@ async fn a_nested_view_answers_at_its_ancestors_path_and_its_own_inside_them() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         body(response).await,
-        "<title>Archived catalogs - Loom</title><main id=\"outlet-0\">\
-         <h1>Catalogs of Loom</h1><div id=\"outlet-1\"><p>None archived</p></div></main>"
+        "<title>Archived catalogs - Loom</title><main id=\"document-outlet\">\
+         <h1>Catalogs of Loom</h1><div id=\"document-catalogs-outlet\"><p>None archived</p></div></main>"
     );
 }
 
@@ -481,9 +458,9 @@ async fn a_view_nested_in_one_with_a_parameter_answers_inside_it_at_depth_two() 
     assert_eq!(
         body(response).await,
         format!(
-            "<title>Notes - Loom</title><main id=\"outlet-0\">\
+            "<title>Notes - Loom</title><main id=\"document-outlet\">\
              <h2>Catalog 7</h2><section id=\"catalog\">\
-             {NOTES}<div id=\"outlet-2\"></div>\
+             {NOTES}<div id=\"document-catalog-notes-outlet\"></div>\
              </section></main>"
         )
     );
@@ -499,9 +476,9 @@ async fn a_view_at_depth_three_answers_inside_every_ancestor_with_their_values()
     assert_eq!(
         body(response).await,
         format!(
-            "<title>Note - Loom</title><main id=\"outlet-0\">\
+            "<title>Note - Loom</title><main id=\"document-outlet\">\
              <h2>Catalog 7</h2><section id=\"catalog\">\
-             {NOTES}<div id=\"outlet-2\">\
+             {NOTES}<div id=\"document-catalog-notes-outlet\">\
              <a href=\"/catalogs/7/notes/first%20draft?page=2&sort=new&rev=3\">\
              Note {{ note: \"first draft\", rev: Some(3) }} of catalog 7</a>\
              </div></section></main>"
@@ -554,7 +531,7 @@ async fn a_view_links_to_the_one_beside_it_through_its_parents_path() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         body(response).await,
-        "<title>Labels - Loom</title><main id=\"outlet-0\">\
+        "<title>Labels - Loom</title><main id=\"document-outlet\">\
          <h2>Catalog 7</h2><section id=\"catalog\">\
          <p>Labels of 7, page Some(2)</p></section></main>"
     );
@@ -593,44 +570,10 @@ async fn a_path_started_from_a_value_goes_down_to_a_view_three_deep() {
     );
 }
 
-#[tokio::test]
-async fn a_view_with_no_part_of_the_path_holds_the_views_nested_in_it_at_its_parents_path() {
-    let response = get_path(router(), "/catalogs/7/summary").await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        body(response).await,
-        "<title>Summary - Loom</title><main id=\"outlet-0\">\
-         <h2>Catalog 7</h2><section id=\"catalog\">\
-         <nav><a href=\"/catalogs/7/summary\">Summary</a></nav><div id=\"outlet-2\">\
-         <p>Summary of 7</p></div></section></main>"
-    );
-}
-
-#[tokio::test]
-async fn a_view_with_no_part_of_the_path_registered_answers_at_its_parents_path() {
-    let router = Router::new().view::<Tabs>().view::<Summary>();
-
-    let response = get_path(
-        router.with_state(App { name: "Loom" }),
-        "/catalogs/7?page=2",
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        body(response).await,
-        "<title>Tabs - Loom</title><main id=\"outlet-0\">\
-         <h2>Catalog 7</h2><section id=\"catalog\">\
-         <nav><a href=\"/catalogs/7/summary?page=2\">Summary</a></nav><div id=\"outlet-2\">\
-         </div></section></main>"
-    );
-}
-
 #[test]
-#[should_panic(expected = "/catalogs/{catalog}")]
-fn a_view_with_no_part_of_the_path_and_its_parent_are_not_both_registered() {
-    let _: Router<App> = Router::new().view::<Catalog>().view::<Tabs>();
+#[should_panic(expected = "Tabs has no part of the path")]
+fn a_nested_view_with_no_part_of_the_path_is_an_error_at_startup() {
+    let _: Router<App> = Router::new().view::<Tabs>();
 }
 
 /// The ids of the outlets in `html`, outermost first.
@@ -640,13 +583,23 @@ fn outlets(html: &str) -> Vec<&str> {
 }
 
 #[tokio::test]
-async fn an_outlets_id_follows_its_views_depth_unless_the_view_names_one() {
+async fn an_outlets_id_is_the_names_of_the_views_down_to_it_unless_the_view_names_one() {
     let catalogs = body(get_path(router(), "/catalogs/archived").await).await;
     let notes = body(get_path(router(), "/catalogs/7/notes/first?sort=new").await).await;
 
-    assert_eq!(outlets(&catalogs), ["outlet-0", "outlet-1"]);
-    // The one a view names does not shift those that follow it.
-    assert_eq!(outlets(&notes), ["outlet-0", "catalog", "outlet-2"]);
+    assert_eq!(
+        outlets(&catalogs),
+        ["document-outlet", "document-catalogs-outlet"]
+    );
+    // The one a view names does not change those that follow it.
+    assert_eq!(
+        outlets(&notes),
+        [
+            "document-outlet",
+            "catalog",
+            "document-catalog-notes-outlet"
+        ]
+    );
 }
 
 #[tokio::test]
@@ -660,13 +613,13 @@ async fn a_path_that_extends_anothers_is_nested_in_it_only_when_declared_so() {
 
     assert_eq!(
         body(beside).await,
-        "<title>Catalog - Loom</title><main id=\"outlet-0\">\
+        "<title>Catalog - Loom</title><main id=\"document-outlet\">\
          <h2>Catalog 7</h2><section id=\"catalog\"></section></main>"
     );
     assert_eq!(
         body(inside).await,
-        "<title>Catalog - Loom</title><main id=\"outlet-0\">\
-         <h1>Catalogs of Loom</h1><div id=\"outlet-1\"><h2>Catalog 7</h2></div></main>"
+        "<title>Catalog - Loom</title><main id=\"document-outlet\">\
+         <h1>Catalogs of Loom</h1><div id=\"document-catalogs-outlet\"><h2>Catalog 7</h2></div></main>"
     );
 }
 
@@ -689,7 +642,7 @@ async fn a_view_nested_in_the_one_at_the_root_path_is_not_served_behind_two_slas
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         body(response).await,
-        "<title>Activity - Loom</title><main id=\"outlet-0\">\
+        "<title>Activity - Loom</title><main id=\"document-outlet\">\
          <h1>Home</h1><a href=\"/activity\">Activity</a></main>"
     );
 }
@@ -703,7 +656,7 @@ async fn the_root_view_on_its_own_is_served_at_the_root_path() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         body(response).await,
-        "<title> - Loom</title><main id=\"outlet-0\"></main>"
+        "<title> - Loom</title><main id=\"document-outlet\"></main>"
     );
 }
 
@@ -714,7 +667,7 @@ async fn path_parameters_and_the_query_string_are_parsed_into_the_views_fields()
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         body(response).await,
-        "<title>Entry - Loom</title><main id=\"outlet-0\">\
+        "<title>Entry - Loom</title><main id=\"document-outlet\">\
          <a href=\"/shelves/7/entries/tea?q=green+leaf&page=2\">\
          Entry { shelf: 7, name: \"tea\", q: \"green leaf\", page: Some(2), tag: [] }</a></main>"
     );
@@ -915,7 +868,7 @@ mod with_maud {
 
         assert_eq!(
             body(response).await,
-            "<title>Home</title><main id=\"outlet-0\"><h1>Welcome to &lt;Loom&gt;</h1>\
+            "<title>Home</title><main id=\"maud-document-outlet\"><h1>Welcome to &lt;Loom&gt;</h1>\
              <a href=\"/search?q=a%26b\">Search</a></main>"
         );
     }

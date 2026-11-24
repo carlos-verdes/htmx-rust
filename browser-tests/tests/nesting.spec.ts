@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 /** The catalog's view is shown, once, in the root view's outlet, with its tabs. */
 function catalog(page: Page, name: string) {
-  const outlet = page.locator('#outlet-0');
+  const outlet = page.locator('main');
   return {
     outlet,
     async expectShown() {
@@ -20,7 +20,7 @@ function catalog(page: Page, name: string) {
 
 /** Of the catalog's tabs, `open` is the one marked as open, and the only one. */
 async function expectOpenTab(page: Page, open: string) {
-  const marked = page.locator('#outlet-1 > nav [aria-current]');
+  const marked = page.locator('main nav [aria-current]');
   await expect(marked).toHaveText([open]);
 }
 
@@ -63,7 +63,7 @@ test('a nested view opened at its address, and refreshed, is shown inside its pa
   await expectTags(page);
 });
 
-test('a view four views deep opened at its address, and refreshed, is shown inside every view around it', async ({
+test('a view three views deep opened at its address, and refreshed, is shown inside every view around it', async ({
   page,
 }) => {
   await page.goto('/catalogs/2/items/Iced%20oolong');

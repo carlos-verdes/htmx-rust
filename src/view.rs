@@ -1,4 +1,5 @@
 use std::{
+    any::type_name,
     fmt::{self, Display, Formatter},
     future::Future,
     ops::Deref,
@@ -46,13 +47,16 @@ pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// in one at `"/"` is at `/activity`. A view whose whole path is empty is
     /// at `/`.
     ///
-    /// A view with no part of its own, as the root view, is at its parent's
-    /// path. One of the two is registered: the one that address shows.
+    /// Only the root view has no part: it is the document around every other
+    /// view, and no address is its own. A view nested in another adds a part,
+    /// so its address is its own; one that adds none is an error when it is
+    /// registered.
     const PATH: &'static str = "";
 
-    /// The id of this view's outlet. By default it follows the view's depth:
-    /// `outlet-0` for the root view, `outlet-1` for a view nested in it, and
-    /// so on.
+    /// The id of this view's outlet. By default it is made of the names of the
+    /// views from the root view down to this one: `document-outlet` for a root
+    /// view `Document`, `document-catalog-outlet` for a `Catalog` nested in
+    /// it. No two outlets of a document share one.
     const OUTLET: Option<&'static str> = None;
 
     /// The title of this view, which every view around it receives when it is
@@ -144,6 +148,18 @@ impl<V: View> ViewPath<V> {
     {
         &self.0.1
     }
+
+    /// The id of this view's outlet, which the view itself receives as
+    /// [`Outlet::id`].
+    pub fn outlet(&self) -> String {
+        outlet::<V>()
+    }
+}
+
+/// The id of a view's outlet: the one it names, or one made of the names of the
+/// views down to it.
+fn outlet<V: View>() -> String {
+    V::OUTLET.map_or_else(|| format!("{}-outlet", V::name()), Into::into)
 }
 
 /// A path is shared, not copied: views need not be `Clone`.
@@ -192,7 +208,7 @@ impl<V: View> ViewPath<V> {
         assert!(
             !path.contains('{'),
             "{} has no field for a parameter of its path: {path}",
-            std::any::type_name::<V>()
+            type_name::<V>()
         );
         (path, query.finish())
     }
@@ -245,6 +261,10 @@ mod chain {
         /// The whole path as the router matches it, parameters in braces.
         fn route() -> String;
 
+        /// The names of the views from the root view down to this one, as an
+        /// id spells them: `document-catalog-items`.
+        fn name() -> String;
+
         /// Checks this view and its ancestors, whose fields' names are `seen`.
         fn check(seen: &mut Vec<(&'static str, &'static str)>);
 
@@ -270,6 +290,10 @@ mod chain {
         type ViewPath = NoParent;
 
         fn route() -> String {
+            String::new()
+        }
+
+        fn name() -> String {
             String::new()
         }
 
@@ -302,7 +326,29 @@ mod chain {
             route
         }
 
+        fn name() -> String {
+            let mut name = V::Parent::name();
+            if !name.is_empty() {
+                name.push('-');
+            }
+            // `app::CatalogItem<Parent>` is spelled `catalog-item`.
+            let own = type_name::<V>().split('<').next().unwrap_or_default();
+            for (index, letter) in own.rsplit("::").next().unwrap_or_default().char_indices() {
+                if letter.is_uppercase() && index > 0 {
+                    name.push('-');
+                }
+                name.extend(letter.to_lowercase());
+            }
+            name
+        }
+
         fn check(seen: &mut Vec<(&'static str, &'static str)>) {
+            assert!(
+                V::Parent::DEPTH == 0 || !V::PATH.is_empty(),
+                "{} has no part of the path: a view nested in another adds its own part, \
+                 so that its address is its own",
+                type_name::<V>()
+            );
             V::Parent::check(seen);
             url::check::<V>(V::PATH, seen);
         }
@@ -327,7 +373,7 @@ mod chain {
             shown: Option<String>,
         ) -> Html {
             let outlet = Outlet {
-                id: V::OUTLET.map_or_else(|| format!("outlet-{}", V::Parent::DEPTH), Into::into),
+                id: outlet::<V>(),
                 content,
                 title,
                 shown,
@@ -387,7 +433,8 @@ pub trait Views<S> {
     ///
     /// If the path already answers GET requests, or the view or one of its
     /// ancestors has a parameter in its part of the path that none of its
-    /// fields fills, or a field named as one of an ancestor's.
+    /// fields fills, a field named as one of an ancestor's, or, nested in
+    /// another view, no part of the path.
     fn view<V: View<State = S>>(self) -> Self;
 }
 

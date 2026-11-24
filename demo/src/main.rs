@@ -205,7 +205,7 @@ impl View for Catalogs {
             ul {
                 @for Record { id, name, .. } in found {
                     li {
-                        a href=(Catalog { catalog_id: *id }.path().to(Tabs)) { (name) }
+                        a href=(Catalog { catalog_id: *id }.path()) { (name) }
                         " "
                         form method="post" action={ "/catalogs/" (id) "/remove" } {
                             button { "Remove " (name) }
@@ -221,6 +221,9 @@ impl View for Catalogs {
 /// One catalog, the resource its path parameter names. It is nested in the
 /// root view, beside the collection and not inside it, although its path
 /// extends the collection's: the path says nothing about nesting.
+///
+/// Its tabs are the views nested in it. It draws the links to them around its
+/// outlet, each the path of that view below the one this catalog is shown at.
 #[derive(Serialize, Deserialize)]
 struct Catalog {
     catalog_id: u32,
@@ -230,14 +233,22 @@ impl View for Catalog {
     type State = App;
     type Parent = Document;
     const PATH: &'static str = "/catalogs/{catalog_id}";
+    const TITLE: &'static str = "Catalog";
 
     async fn render(at: &ViewPath<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
+        // The tab that is open is the one whose path is the view in the outlet.
+        let (items, tags) = (at.to(Items), at.to(Tags));
         html! {
             @match store.catalog(at.catalog_id) {
                 Some(catalog) => {
                     h1 { (catalog.name) }
-                    div id=(outlet.id) { (outlet.content) }
+                    nav {
+                        a href=(items) aria-current=[outlet.shows(&items).then_some("page")] { "Items" }
+                        " "
+                        a href=(tags) aria-current=[outlet.shows(&tags).then_some("page")] { "Tags" }
+                    }
+                    section id=(outlet.id) { (outlet.content) }
                 }
                 // A missing resource is not yet a failure (ADR 4).
                 None => p { "There is no catalog " (at.catalog_id) "." },
@@ -247,48 +258,20 @@ impl View for Catalog {
     }
 }
 
-/// The tabs of a catalog: a view with no part of the path of its own, there
-/// only to draw the links to the views nested in it, around its outlet. It is
-/// the view at a catalog's address, which is its own: `/catalogs/{catalog_id}`.
-///
-/// A link to a tab is the path of that tab below the one this view is shown
-/// at, so it is in the catalog the address names.
-#[derive(Serialize, Deserialize)]
-struct Tabs;
-
-impl View for Tabs {
-    type State = App;
-    type Parent = Catalog;
-    const TITLE: &'static str = "Catalog";
-
-    async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
-        // The tab that is open is the one whose path is the view in the outlet.
-        let (items, tags) = (at.to(Items), at.to(Tags));
-        html! {
-            nav {
-                a href=(items) aria-current=[outlet.shows(&items).then_some("page")] { "Items" }
-                " "
-                a href=(tags) aria-current=[outlet.shows(&tags).then_some("page")] { "Tags" }
-            }
-            section id=(outlet.id) { (outlet.content) }
-        }
-    }
-}
-
 /// A catalog's tags, a tab: `/catalogs/{catalog_id}/tags`. It holds nothing:
-/// the catalog it is in is two views above it, in the path it is shown at.
+/// the catalog it is in is the view above it, in the path it is shown at.
 #[derive(Serialize, Deserialize)]
 struct Tags;
 
 impl View for Tags {
     type State = App;
-    type Parent = Tabs;
+    type Parent = Catalog;
     const PATH: &'static str = "/tags";
     const TITLE: &'static str = "Tags";
 
     async fn render(at: &ViewPath<Self>, app: &App, _: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
-        let catalog = store.catalog(at.parent().parent().catalog_id);
+        let catalog = store.catalog(at.parent().catalog_id);
         html! {
             h2 { "Tags" }
             ul {
@@ -307,14 +290,14 @@ struct Items;
 
 impl View for Items {
     type State = App;
-    type Parent = Tabs;
+    type Parent = Catalog;
     const PATH: &'static str = "/items";
     const TITLE: &'static str = "Items";
     const OUTLET: Option<&'static str> = Some("item");
 
     async fn render(at: &ViewPath<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
-        let catalog = store.catalog(at.parent().parent().catalog_id);
+        let catalog = store.catalog(at.parent().catalog_id);
         html! {
             h2 { "Items" }
             ul {
@@ -332,7 +315,7 @@ impl View for Items {
     }
 }
 
-/// One item of a catalog, nested in the catalog's items, four views below the
+/// One item of a catalog, nested in the catalog's items, three views below the
 /// root view: `/catalogs/{catalog_id}/items/{item}`. Its only field is its own.
 #[derive(Serialize, Deserialize)]
 struct Item {
@@ -348,7 +331,7 @@ impl View for Item {
     async fn render(at: &ViewPath<Self>, app: &App, _: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
         let catalog = store
-            .catalog(at.parent().parent().parent().catalog_id)
+            .catalog(at.parent().parent().catalog_id)
             .filter(|catalog| catalog.items.contains(&at.item.as_str()));
         html! {
             @match catalog {
@@ -379,10 +362,10 @@ async fn start_catalog(State(app): State<App>) -> impl IntoResponse {
             tags: Vec::new(),
             items: Vec::new(),
         });
-        (Catalog { catalog_id: id }.path().to(Tabs), name)
+        (Catalog { catalog_id: id }.path(), name)
     };
     let outlet = Outlet::new(
-        "outlet-0",
+        Document.path().outlet(),
         html! {
             h1 { "Catalog created" }
             p { strong { (name) } " is among the catalogs now." }
@@ -423,8 +406,8 @@ async fn main() {
     let router = Router::new()
         .view::<Home>()
         .view::<Catalogs>()
-        // A catalog's address shows its tabs, with none of them open.
-        .view::<Tabs>()
+        // A catalog's address shows it with none of its tabs open.
+        .view::<Catalog>()
         .view::<Tags>()
         .view::<Items>()
         .view::<Item>()

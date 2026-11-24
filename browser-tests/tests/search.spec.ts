@@ -7,7 +7,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 /** The names of the catalogs listed. */
 function listed(page: Page) {
-  return page.locator('#outlet-0').getByRole('listitem').getByRole('link');
+  return page.locator('main').getByRole('listitem').getByRole('link');
 }
 
 /** The catalogs listed are exactly these, and the form shows what was searched. */
@@ -15,7 +15,7 @@ async function expectCatalogs(page: Page, path: string, searched: string, names:
   await expect(page).toHaveURL(path);
   await expect(listed(page)).toHaveText(names);
   await expect(page.getByRole('searchbox', { name: 'Name' })).toHaveValue(searched);
-  await expect(page.locator('#outlet-0')).toHaveCount(1);
+  await expect(page.locator('main')).toHaveCount(1);
 }
 
 // The catalogs the demo starts with. Other tests start and remove their own
@@ -69,7 +69,7 @@ test('a result links to its resource, at an address that can be refreshed', asyn
 
   await page.getByRole('link', { name: 'Winter coffees' }).click();
 
-  const heading = page.locator('#outlet-0').getByRole('heading', { level: 1 });
+  const heading = page.locator('main').getByRole('heading', { level: 1 });
   await expect(page).toHaveURL('/catalogs/4');
   await expect(heading).toHaveText('Winter coffees');
   await page.reload();

@@ -17,9 +17,9 @@ function documentLoads(page: Page) {
 async function expectView(page: Page, path: string, title: string) {
   await expect(page).toHaveURL(path);
   await expect(page).toHaveTitle(title);
-  await expect(page.locator('#outlet-0').getByRole('heading', { level: 1 })).toHaveText(title);
+  await expect(page.locator('main').getByRole('heading', { level: 1 })).toHaveText(title);
   await expect(page.getByRole('navigation')).toHaveCount(1);
-  await expect(page.locator('#outlet-0')).toHaveCount(1);
+  await expect(page.locator('main')).toHaveCount(1);
 }
 
 test('a click on a plain link swaps the outlet and updates the address bar', async ({
@@ -65,7 +65,7 @@ async function startCatalog(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Start a catalog' }).click();
   await expectView(page, '/catalogs', 'Catalog created');
-  return page.locator('#outlet-0 strong').innerText();
+  return page.locator('main strong').innerText();
 }
 
 test('a posted form answered with 201 shows the answer, and the catalog is listed', async ({
@@ -82,12 +82,12 @@ test('a posted form answered with 201 shows the answer, and the catalog is liste
   // The answer is shown at the address the form posted to, the collection's.
   await expectView(page, '/catalogs', 'Catalog created');
   expect(loads).toHaveLength(javaScriptEnabled ? 0 : 1);
-  const name = await page.locator('#outlet-0 strong').innerText();
+  const name = await page.locator('main strong').innerText();
 
   // The answer links to the catalog it created, at an address of its own.
   await page.getByRole('link', { name: `View ${name}`, exact: true }).click();
   await expect(page).toHaveURL(/\/catalogs\/\d+$/);
-  await expect(page.locator('#outlet-0').getByRole('heading', { level: 1 })).toHaveText(name);
+  await expect(page.locator('main').getByRole('heading', { level: 1 })).toHaveText(name);
 
   await page.getByRole('link', { name: 'All catalogs' }).click();
   await expectView(page, '/catalogs', 'Catalogs');
