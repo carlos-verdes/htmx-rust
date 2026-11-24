@@ -11,6 +11,9 @@ A view is a type whose fields are what its URL carries (path parameters, query s
 
 ## Consequences
 
+- A view's fields are read and printed with serde, as one list of names and values: a path parameter fills the field it names (`{id}` fills `id`) and the query string fills the others. So each field holds one plain value, and a view declares no parser and no printer of its own.
+- A URL that does not parse into the view's fields, or into those of an ancestor, is a client error (`400`), answered before any view runs.
+- The compiler checks a link's fields where the link is made. That a path's parameter has a field of the same name is not checked by the compiler: printing such a view panics.
 - From the registered views the library tells each view its siblings and its children (title, URL, which one is shown), so a view can draw its tabs. Their order is the order of registration.
 - On a narrow swap the ancestors do not run. A check that must hold for every view nested in a resource's view (may this reader see it) belongs to the domain or to an axum layer, not to the parent view.
 - A parent and its child may each load the same thing on a full load.

@@ -5,7 +5,7 @@ A library for server-rendered Rust web apps enhanced with htmx, where the URL al
 ## Language
 
 **View**:
-What one URL path shows: the path names a resource and the view is its representation, complete on its own. A view may be nested inside another view, to any depth; the root view, nested in no other, is the whole document.
+What one URL shows: the path names a resource and the view is its representation, complete on its own. A view's fields are what its URL carries, the parameters of the path and the query string, so a view is also a value that prints its own URL. A view may be nested inside another view, to any depth; the root view, nested in no other, is the whole document.
 _Avoid_: Route, screen, handler. Page and section for views by their depth: they are all views. Layout for the root view: a layout is how a view arranges its space (columns, a grid, a collapsible panel), which is the app's own markup
 
 **Outlet**:
