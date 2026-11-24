@@ -10,4 +10,4 @@ mod html;
 mod view;
 
 pub use html::Html;
-pub use view::{Layout, Outlet, View, Views};
+pub use view::{Outlet, Root, View, Views};

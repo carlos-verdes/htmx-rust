@@ -8,7 +8,7 @@ use axum::{
     response::Response,
     routing::get,
 };
-use htmx_rust::{Html, Layout, Outlet, View, Views};
+use htmx_rust::{Html, Outlet, Root, View, Views};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -19,10 +19,13 @@ struct App {
 
 struct Document;
 
-impl Layout<App> for Document {
-    async fn render(app: &App, outlet: Outlet, title: &str) -> impl Into<Html> {
+impl View<App> for Document {
+    type Parent = Root;
+
+    async fn render(app: &App, outlet: Outlet) -> impl Into<Html> {
         Html::trusted(format!(
-            "<title>{title} - {}</title><main id=\"{}\">{}</main>",
+            "<title>{} - {}</title><main id=\"{}\">{}</main>",
+            outlet.title,
             app.name,
             outlet.id,
             outlet.content.as_str()
@@ -37,8 +40,26 @@ impl View<App> for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(app: &App) -> impl Into<Html> {
-        Html::trusted(format!("<h1>Catalogs of {}</h1>", app.name))
+    async fn render(app: &App, outlet: Outlet) -> impl Into<Html> {
+        Html::trusted(format!(
+            "<h1>Catalogs of {}</h1><div id=\"{}\">{}</div>",
+            app.name,
+            outlet.id,
+            outlet.content.as_str()
+        ))
+    }
+}
+
+/// A section of [`Catalogs`].
+struct Archived;
+
+impl View<App> for Archived {
+    type Parent = Catalogs;
+    const PATH: &'static str = "/archived";
+    const TITLE: &'static str = "Archived catalogs";
+
+    async fn render(_: &App, _: Outlet) -> impl Into<Html> {
+        Html::trusted("<p>None archived</p>")
     }
 }
 
@@ -49,7 +70,7 @@ impl View<App> for AlsoCatalogs {
     type Parent = Document;
     const PATH: &'static str = "/catalogs";
 
-    async fn render(_: &App) -> impl Into<Html> {
+    async fn render(_: &App, _: Outlet) -> impl Into<Html> {
         Html::default()
     }
 }
@@ -57,6 +78,7 @@ impl View<App> for AlsoCatalogs {
 fn router() -> Router {
     Router::new()
         .view::<Catalogs>()
+        .view::<Archived>()
         .route("/health", get(|| async { "ok" }))
         .with_state(App { name: "Loom" })
 }
@@ -79,7 +101,20 @@ async fn a_page_answers_at_its_path_with_the_layout_around_it() {
     assert_eq!(response.headers()[CONTENT_TYPE], "text/html; charset=utf-8");
     assert_eq!(
         body(response).await,
-        "<title>Catalogs - Loom</title><main id=\"outlet-0\"><h1>Catalogs of Loom</h1></main>"
+        "<title>Catalogs - Loom</title><main id=\"outlet-0\">\
+         <h1>Catalogs of Loom</h1><div id=\"outlet-1\"></div></main>"
+    );
+}
+
+#[tokio::test]
+async fn a_section_answers_at_its_ancestors_path_and_its_own_inside_them() {
+    let response = get_path(router(), "/catalogs/archived").await;
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        body(response).await,
+        "<title>Archived catalogs - Loom</title><main id=\"outlet-0\">\
+         <h1>Catalogs of Loom</h1><div id=\"outlet-1\"><p>None archived</p></div></main>"
     );
 }
 
@@ -117,17 +152,19 @@ mod with_maud {
         const PATH: &'static str = "/";
         const TITLE: &'static str = "Home";
 
-        async fn render(app: &App) -> impl Into<Html> {
+        async fn render(app: &App, _: Outlet) -> impl Into<Html> {
             html! { h1 { "Welcome to " (app.name) } }
         }
     }
 
     struct MaudDocument;
 
-    impl Layout<App> for MaudDocument {
-        async fn render(_: &App, outlet: Outlet, title: &str) -> impl Into<Html> {
+    impl View<App> for MaudDocument {
+        type Parent = Root;
+
+        async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {
             html! {
-                title { (title) }
+                title { (outlet.title) }
                 main id=(outlet.id) { (outlet.content) }
             }
         }

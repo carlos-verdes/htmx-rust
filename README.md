@@ -2,24 +2,27 @@
 
 Server-rendered Rust web apps with [htmx](https://htmx.org) and [axum](https://github.com/tokio-rs/axum), built on how the web already works: every URL names a resource, the server answers with HTML, and links and forms are the only way to move.
 
-**Status: early. A page in a layout is served; the rest of the design is written down, not built.**
+**Status: early. Views nested in a layout are served as whole documents; the rest of the design is written down, not built.**
 
 ```rust
 use axum::Router;
-use htmx_rust::{Html, Layout, Outlet, View, Views};
+use htmx_rust::{Html, Outlet, Root, View, Views};
 use maud::{DOCTYPE, html};
 
 #[derive(Clone)]
 struct App;
 
-/// The layout: the whole document, around its outlet.
+/// The layout: the whole document, around its outlet. It is the view with no
+/// parent and no path.
 struct Document;
 
-impl Layout<App> for Document {
-    async fn render(_: &App, outlet: Outlet, title: &str) -> impl Into<Html> {
+impl View<App> for Document {
+    type Parent = Root;
+
+    async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {
         html! {
             (DOCTYPE)
-            title { (title) }
+            title { (outlet.title) }
             main id=(outlet.id) { (outlet.content) }
         }
     }
@@ -33,7 +36,7 @@ impl View<App> for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(_: &App) -> impl Into<Html> {
+    async fn render(_: &App, _: Outlet) -> impl Into<Html> {
         html! { h1 { "Catalogs" } }
     }
 }
