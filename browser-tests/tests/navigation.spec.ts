@@ -60,30 +60,15 @@ test('refresh, back and forward each show the view the address names', async ({ 
   await expectView(page, '/', 'Home');
 });
 
-test('a posted form answered with 303 ends on the view it redirects to', async ({
-  page,
-  javaScriptEnabled,
-}) => {
+/** Starts a catalog from the home view and gives back its name. */
+async function startCatalog(page: Page) {
   await page.goto('/');
-  const loads = documentLoads(page);
-  const answer = page.waitForResponse((response) => response.request().method() === 'POST');
+  await page.getByRole('button', { name: 'Start a catalog' }).click();
+  await expectView(page, '/catalogs', 'Catalog created');
+  return page.locator('#outlet-0 strong').innerText();
+}
 
-  await page.getByRole('button', { name: 'Clear the catalogs' }).click();
-
-  expect((await answer).status()).toBe(303);
-  await expectView(page, '/catalogs', 'Catalogs');
-  // Without JavaScript the browser loads the form's answer and then follows it.
-  expect(loads).toHaveLength(javaScriptEnabled ? 0 : 2);
-
-  // The address in the bar is one that can be gone back from and refreshed.
-  await page.goBack();
-  await expectView(page, '/', 'Home');
-  await page.goForward();
-  await page.reload();
-  await expectView(page, '/catalogs', 'Catalogs');
-});
-
-test('a posted form answered with 201 shows the answer in the outlet', async ({
+test('a posted form answered with 201 shows the answer, and the catalog is listed', async ({
   page,
   javaScriptEnabled,
 }) => {
@@ -97,7 +82,34 @@ test('a posted form answered with 201 shows the answer in the outlet', async ({
   // The answer is shown at the address the form posted to, the collection's.
   await expectView(page, '/catalogs', 'Catalog created');
   expect(loads).toHaveLength(javaScriptEnabled ? 0 : 1);
+  const name = await page.locator('#outlet-0 strong').innerText();
 
   await page.getByRole('link', { name: 'See the catalogs' }).click();
   await expectView(page, '/catalogs', 'Catalogs');
+  await expect(page.getByRole('button', { name: `Remove ${name}`, exact: true })).toHaveCount(1);
+});
+
+test('a posted form answered with 303 ends on the view it redirects to, changed', async ({
+  page,
+  javaScriptEnabled,
+}) => {
+  const name = await startCatalog(page);
+  await page.getByRole('link', { name: 'See the catalogs' }).click();
+  await expect(page.getByRole('button', { name: `Remove ${name}`, exact: true })).toHaveCount(1);
+  const loads = documentLoads(page);
+  const answer = page.waitForResponse((response) => response.request().method() === 'POST');
+
+  await page.getByRole('button', { name: `Remove ${name}`, exact: true }).click();
+
+  expect((await answer).status()).toBe(303);
+  // The bar shows the view redirected to, not the address the form posted to.
+  await expectView(page, '/catalogs', 'Catalogs');
+  await expect(page.getByRole('button', { name: `Remove ${name}`, exact: true })).toHaveCount(0);
+  // Without JavaScript the browser loads the form's answer and then follows it.
+  expect(loads).toHaveLength(javaScriptEnabled ? 0 : 2);
+
+  // That address can be refreshed, and the catalog is still gone.
+  await page.reload();
+  await expectView(page, '/catalogs', 'Catalogs');
+  await expect(page.getByRole('button', { name: `Remove ${name}`, exact: true })).toHaveCount(0);
 });
