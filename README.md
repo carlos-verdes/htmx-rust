@@ -68,6 +68,24 @@ REST describes the web of pages, links and forms. htmx-rust holds an app to its 
 - **Unopinionated core.** The core writes no HTML and chooses no styling. [maud](https://maud.lambda.xyz) is supported out of the box and can be switched off.
 - **Ready for agents.** Few concepts, one way to do each thing, and mistakes caught by the compiler.
 
+## Demo
+
+[`demo`](demo) is a small app to read and run. htmx 4 comes from the `htmx.org` package, which [pnpm](https://pnpm.io) installs:
+
+```sh
+(cd demo && pnpm install)
+cargo run --package htmx-rust-demo
+```
+
+[`browser-tests`](browser-tests) is a [Playwright](https://playwright.dev) suite that starts the demo and checks it in a real browser, with JavaScript on and off:
+
+```sh
+cd browser-tests
+pnpm install
+pnpm exec playwright install chromium
+pnpm test
+```
+
 ## Documentation
 
 - [Glossary](GLOSSARY.md): the words this project uses.
