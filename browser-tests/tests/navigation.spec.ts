@@ -102,6 +102,10 @@ test('a posted form answered with 303 ends on the view it redirects to, changed'
   const remove = page.getByRole('button', { name: `Remove ${name}`, exact: true });
   await page.goto('/');
   await page.getByRole('link', { name: 'See the catalogs' }).click();
+  // The form is sent from a search's address, which is not the one it redirects to.
+  await page.getByRole('searchbox', { name: 'Name' }).fill(name);
+  await page.getByRole('button', { name: 'Search' }).click();
+  await expect(page).toHaveURL(/\/catalogs\?q=/);
   await expect(remove).toHaveCount(1);
   const loads = documentLoads(page);
   const answer = page.waitForResponse((response) => response.request().method() === 'POST');
@@ -121,7 +125,9 @@ test('a posted form answered with 303 ends on the view it redirects to, changed'
   await expect(remove).toHaveCount(0);
 
   // The form's answer is a step of its own in the history: one step back is
-  // the catalogs as they were reached by the link, and one more is home.
+  // the search it was sent from, the next the catalogs, and one more is home.
+  await page.goBack();
+  await expect(page).toHaveURL(/\/catalogs\?q=/);
   await page.goBack();
   await expectView(page, '/catalogs', 'Catalogs');
   await page.goBack();
