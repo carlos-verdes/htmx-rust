@@ -33,6 +33,7 @@ struct Record {
     id: u32,
     name: String,
     tags: Vec<&'static str>,
+    items: Vec<&'static str>,
 }
 
 /// What the app keeps, in memory: the catalogs.
@@ -42,23 +43,42 @@ struct Store {
     catalogs: Vec<Record>,
 }
 
+impl Store {
+    fn catalog(&self, id: u32) -> Option<&Record> {
+        self.catalogs.iter().find(|catalog| catalog.id == id)
+    }
+}
+
 /// The catalogs the demo starts with.
 impl Default for Store {
     fn default() -> Self {
         let catalogs = [
-            ("Spring teas", ["tea", "hot"]),
-            ("Summer teas", ["tea", "iced"]),
-            ("Autumn coffees", ["coffee", "iced"]),
-            ("Winter coffees", ["coffee", "hot"]),
+            ("Spring teas", ["tea", "hot"], ["Sencha", "Darjeeling"]),
+            (
+                "Summer teas",
+                ["tea", "iced"],
+                ["Iced oolong", "Cold brew green"],
+            ),
+            (
+                "Autumn coffees",
+                ["coffee", "iced"],
+                ["Cold brew", "Iced latte"],
+            ),
+            (
+                "Winter coffees",
+                ["coffee", "hot"],
+                ["Espresso", "Flat white"],
+            ),
         ];
         Self {
             started: catalogs.len() as u32,
             catalogs: (1..)
                 .zip(catalogs)
-                .map(|(id, (name, tags))| Record {
+                .map(|(id, (name, tags, items))| Record {
                     id,
                     name: name.into(),
                     tags: tags.into(),
+                    items: items.into(),
                 })
                 .collect(),
         }
@@ -195,7 +215,9 @@ impl View for Catalogs {
     }
 }
 
-/// One catalog, the resource its path parameter names.
+/// One catalog, the resource its path parameter names. It is nested in the
+/// root view, beside the collection and not inside it, although its path
+/// extends the collection's: the path says nothing about nesting.
 #[derive(Serialize, Deserialize)]
 struct Catalog {
     id: u32,
@@ -207,16 +229,113 @@ impl View for Catalog {
     const PATH: &'static str = "/catalogs/{id}";
     const TITLE: &'static str = "Catalog";
 
-    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(&self, app: &App, outlet: Outlet) -> impl Into<Html> {
+        let Self { id } = *self;
         let store = app.lock().unwrap();
-        let catalog = store.catalogs.iter().find(|catalog| catalog.id == self.id);
         html! {
-            @match catalog {
-                Some(catalog) => h1 { (catalog.name) },
+            @match store.catalog(id) {
+                Some(catalog) => {
+                    h1 { (catalog.name) }
+                    nav {
+                        a href=(Items { id }.url()) { "Items" }
+                        " "
+                        a href=(Tags { id }.url()) { "Tags" }
+                    }
+                    section id=(outlet.id) { (outlet.content) }
+                }
                 // A missing resource is not yet a failure (ADR 4).
-                None => p { "There is no catalog " (self.id) "." },
+                None => p { "There is no catalog " (id) "." },
             }
             p { a href=(Catalogs::default().url()) { "All catalogs" } }
+        }
+    }
+}
+
+/// A catalog's tags, nested in the catalog: `/catalogs/{id}/tags`. Its `id` is
+/// its parent's parameter, which it holds to load its own data and to print
+/// its own URL.
+#[derive(Serialize, Deserialize)]
+struct Tags {
+    id: u32,
+}
+
+impl View for Tags {
+    type State = App;
+    type Parent = Catalog;
+    const PATH: &'static str = "/tags";
+    const TITLE: &'static str = "Tags";
+
+    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
+        let store = app.lock().unwrap();
+        let tags = store.catalog(self.id).map(|catalog| &catalog.tags);
+        html! {
+            h2 { "Tags" }
+            ul {
+                @for tag in tags.into_iter().flatten() {
+                    li { (tag) }
+                }
+            }
+        }
+    }
+}
+
+/// A catalog's items, nested in the catalog: `/catalogs/{id}/items`. The one
+/// the URL names is shown in its outlet, whose id it chooses itself.
+#[derive(Serialize, Deserialize)]
+struct Items {
+    id: u32,
+}
+
+impl View for Items {
+    type State = App;
+    type Parent = Catalog;
+    const PATH: &'static str = "/items";
+    const TITLE: &'static str = "Items";
+    const OUTLET: Option<&'static str> = Some("item");
+
+    async fn render(&self, app: &App, outlet: Outlet) -> impl Into<Html> {
+        let Self { id } = *self;
+        let store = app.lock().unwrap();
+        let items = store.catalog(id).map(|catalog| &catalog.items);
+        html! {
+            h2 { "Items" }
+            ul {
+                @for &item in items.into_iter().flatten() {
+                    li { a href=(Item { id, item: item.into() }.url()) { (item) } }
+                }
+            }
+            div id=(outlet.id) { (outlet.content) }
+        }
+    }
+}
+
+/// One item of a catalog, nested in the catalog's items at depth three:
+/// `/catalogs/{id}/items/{item}`.
+#[derive(Serialize, Deserialize)]
+struct Item {
+    id: u32,
+    item: String,
+}
+
+impl View for Item {
+    type State = App;
+    type Parent = Items;
+    const PATH: &'static str = "/{item}";
+    const TITLE: &'static str = "Item";
+
+    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
+        let store = app.lock().unwrap();
+        let catalog = store
+            .catalog(self.id)
+            .filter(|catalog| catalog.items.contains(&self.item.as_str()));
+        html! {
+            @match catalog {
+                Some(catalog) => {
+                    h3 { (self.item) }
+                    p { "One of the items of " (catalog.name) "." }
+                }
+                None => p { "There is no item " (self.item) " here." },
+            }
         }
     }
 }
@@ -234,6 +353,7 @@ async fn start_catalog(State(app): State<App>) -> impl IntoResponse {
             id,
             name: name.clone(),
             tags: Vec::new(),
+            items: Vec::new(),
         });
         (Catalog { id }, name)
     };
@@ -278,6 +398,9 @@ async fn main() {
         .view::<Home>()
         .view::<Catalogs>()
         .view::<Catalog>()
+        .view::<Tags>()
+        .view::<Items>()
+        .view::<Item>()
         // Ordinary axum routes, beside the views.
         .route("/catalogs", post(start_catalog))
         .route("/catalogs/{id}/remove", post(remove_catalog))
