@@ -2,7 +2,49 @@
 
 Server-rendered Rust web apps with [htmx](https://htmx.org) and [axum](https://github.com/tokio-rs/axum), built on how the web already works: every URL names a resource, the server answers with HTML, and links and forms are the only way to move.
 
-**Status: early. The design is written down; nothing is usable yet.**
+**Status: early. Nested views are served as whole documents; the rest of the design is written down, not built.**
+
+```rust
+use axum::Router;
+use htmx_rust::{Html, NoParent, Outlet, View, Views};
+use maud::{DOCTYPE, html};
+
+#[derive(Clone)]
+struct App;
+
+/// The root view: the whole document, around its outlet. It has no parent
+/// and no path.
+struct Document;
+
+impl View for Document {
+    type State = App;
+    type Parent = NoParent;
+
+    async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {
+        html! {
+            (DOCTYPE)
+            title { (outlet.title) }
+            main id=(outlet.id) { (outlet.content) }
+        }
+    }
+}
+
+/// What `/catalogs` shows, in the root view's outlet.
+struct Catalogs;
+
+impl View for Catalogs {
+    type State = App;
+    type Parent = Document;
+    const PATH: &'static str = "/catalogs";
+    const TITLE: &'static str = "Catalogs";
+
+    async fn render(_: &App, _: Outlet) -> impl Into<Html> {
+        html! { h1 { "Catalogs" } }
+    }
+}
+
+let router: Router = Router::new().view::<Catalogs>().with_state(App);
+```
 
 ## REST, as it was meant
 
@@ -20,7 +62,7 @@ REST describes the web of pages, links and forms. htmx-rust holds an app to its 
 
 ## Principles
 
-- **URL as state.** A link opens a page, or a section inside it, and the address bar always says what is on screen.
+- **URL as state.** A link opens a view, or a view nested inside it, and the address bar always says what is on screen.
 - **Convention over configuration.** Sensible defaults first; every one of them can be overridden.
 - **The server leads.** The server decides what each response contains; the browser shows it.
 - **Unopinionated core.** The core writes no HTML and chooses no styling. [maud](https://maud.lambda.xyz) is supported out of the box and can be switched off.
@@ -33,7 +75,7 @@ REST describes the web of pages, links and forms. htmx-rust holds an app to its 
 
 ## Planned
 
-- Views, layouts and nested sections served from one axum router
+- Views nested to any depth, served from one axum router
 - Forms
 - Regions: parts of a page refreshed on their own
 - File-system routing
