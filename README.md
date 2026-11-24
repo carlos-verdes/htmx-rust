@@ -2,25 +2,27 @@
 
 Server-rendered Rust web apps with [htmx](https://htmx.org) and [axum](https://github.com/tokio-rs/axum), built on how the web already works: every URL names a resource, the server answers with HTML, and links and forms are the only way to move.
 
-**Status: early. Nested views are served as whole documents; the rest of the design is written down, not built.**
+**Status: early. Nested views are served as whole documents, and a view's fields are parsed from its URL and printed back as one; the rest of the design is written down, not built.**
 
 ```rust
 use axum::Router;
 use htmx_rust::{Html, NoParent, Outlet, View, Views};
 use maud::{DOCTYPE, html};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone)]
 struct App;
 
 /// The root view: the whole document, around its outlet. It has no parent
 /// and no path.
+#[derive(Serialize, Deserialize)]
 struct Document;
 
 impl View for Document {
     type State = App;
     type Parent = NoParent;
 
-    async fn render(_: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(&self, _: &App, outlet: Outlet) -> impl Into<Html> {
         html! {
             (DOCTYPE)
             title { (outlet.title) }
@@ -30,6 +32,7 @@ impl View for Document {
 }
 
 /// What `/catalogs` shows, in the root view's outlet.
+#[derive(Serialize, Deserialize)]
 struct Catalogs;
 
 impl View for Catalogs {
@@ -38,13 +41,46 @@ impl View for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(_: &App, _: Outlet) -> impl Into<Html> {
-        html! { h1 { "Catalogs" } }
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        let teas = Catalog { id: 7, q: Some("tea".into()) };
+        html! {
+            h1 { "Catalogs" }
+            // A link is printed from a value, so it cannot point at a route
+            // that does not exist: this one is `/catalogs/7?q=tea`.
+            a href=(teas.url()) { "The teas of catalog 7" }
+        }
     }
 }
 
-let router: Router = Router::new().view::<Catalogs>().with_state(App);
+/// What `/catalogs/7?q=tea` shows. A view's fields are what its URL carries.
+#[derive(Serialize, Deserialize)]
+struct Catalog {
+    /// The `{id}` of the path.
+    id: u32,
+    /// Any other field is in the query string.
+    q: Option<String>,
+}
+
+impl View for Catalog {
+    type State = App;
+    type Parent = Document;
+    const PATH: &'static str = "/catalogs/{id}";
+    const TITLE: &'static str = "Catalog";
+
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+        html! { h1 { "Catalog " (self.id) } }
+    }
+}
+
+let router: Router = Router::new()
+    .view::<Catalogs>()
+    .view::<Catalog>()
+    .with_state(App);
+
+assert_eq!(Catalog { id: 7, q: None }.url(), "/catalogs/7");
 ```
+
+A view derives serde's `Serialize` and `Deserialize`: that is how its fields are read from a URL and printed back. A URL that does not parse into the fields, such as `/catalogs/seven`, is answered with `400 Bad Request` and no view runs.
 
 ## REST, as it was meant
 

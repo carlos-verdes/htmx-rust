@@ -1,12 +1,25 @@
 use std::future::Future;
 
-use axum::{Router, extract::State, routing::get};
+use axum::{
+    Router,
+    extract::{RawPathParams, RawQuery, State},
+    http::StatusCode,
+    routing::get,
+};
+use serde::{Serialize, de::DeserializeOwned};
 
-use crate::Html;
+use crate::{Html, url};
 use chain::Chain;
 
-/// What one URL path shows, nested in its [`Parent`](View::Parent).
-pub trait View: 'static {
+/// What one URL shows, nested in its [`Parent`](View::Parent).
+///
+/// A view's fields are what its URL carries: the parameters its path names
+/// (`{id}` fills the field `id`), and the query string for every other field.
+/// Each field holds a plain value, such as a number, a string or an `Option`
+/// of one, or a `Vec` of them, which the query string carries by repeating the
+/// field's name (`?tag=tea&tag=green`). A request's URL is parsed into the view, and
+/// [`url`](View::url) prints it back.
+pub trait View: Serialize + DeserializeOwned + Send + Sync + 'static {
     /// The application state this view renders with: the router's own.
     type State: Sync;
 
@@ -14,7 +27,8 @@ pub trait View: 'static {
     type Parent: Parent<Self::State>;
 
     /// This view's part of the path, which follows its ancestors' parts. The
-    /// root view has none.
+    /// root view has none. A parameter is a field's name in braces, as in
+    /// `"/catalogs/{id}"`.
     const PATH: &'static str = "";
 
     /// The title of this view, which every view around it receives when it is
@@ -23,7 +37,24 @@ pub trait View: 'static {
 
     /// Declared as `async fn render(..) -> impl Into<Html>`, it returns an
     /// engine's output, such as maud markup, as it is.
-    fn render(state: &Self::State, outlet: Outlet) -> impl Future<Output = impl Into<Html>> + Send;
+    fn render(
+        &self,
+        state: &Self::State,
+        outlet: Outlet,
+    ) -> impl Future<Output = impl Into<Html>> + Send;
+
+    /// The URL that shows this view: its ancestors' parts of the path and its
+    /// own, with the parameters filled from its fields, then its other fields
+    /// as the query string. A request to it is parsed back into this value.
+    ///
+    /// It is the one way to print a view's URL, and not for a view to define.
+    ///
+    /// # Panics
+    ///
+    /// If a parameter of the path has no field of that name.
+    fn url(&self) -> String {
+        url::print(&Self::path(), self)
+    }
 }
 
 /// The parent of the root view: none. It is not a view.
@@ -45,40 +76,65 @@ mod chain {
         /// How many views there are from the root view down to this one.
         const DEPTH: usize;
 
+        /// This view and its ancestors, as a URL says they are.
+        type Views: Send + Sync;
+
         fn path() -> String;
 
+        /// Reads this view and its ancestors from what a URL carries.
+        fn parse(fields: &str) -> Result<Self::Views, url::Error>;
+
         /// Renders this view around `content`, and its ancestors around it.
-        fn show(state: &S, content: Html, title: &'static str)
-        -> impl Future<Output = Html> + Send;
+        fn show(
+            views: &Self::Views,
+            state: &S,
+            content: Html,
+            title: &'static str,
+        ) -> impl Future<Output = Html> + Send;
     }
 
     impl<S: Sync> Chain<S> for NoParent {
         const DEPTH: usize = 0;
+        type Views = ();
 
         fn path() -> String {
             String::new()
         }
 
-        async fn show(_: &S, content: Html, _: &'static str) -> Html {
+        fn parse(_: &str) -> Result<(), url::Error> {
+            Ok(())
+        }
+
+        async fn show(_: &(), _: &S, content: Html, _: &'static str) -> Html {
             content
         }
     }
 
     impl<V: View> Chain<V::State> for V {
         const DEPTH: usize = V::Parent::DEPTH + 1;
+        type Views = (V, <V::Parent as Chain<V::State>>::Views);
 
         fn path() -> String {
             V::Parent::path() + V::PATH
         }
 
-        async fn show(state: &V::State, content: Html, title: &'static str) -> Html {
+        fn parse(fields: &str) -> Result<Self::Views, url::Error> {
+            Ok((url::parse(fields)?, V::Parent::parse(fields)?))
+        }
+
+        async fn show(
+            (view, ancestors): &Self::Views,
+            state: &V::State,
+            content: Html,
+            title: &'static str,
+        ) -> Html {
             let outlet = Outlet {
                 id: format!("outlet-{}", V::Parent::DEPTH),
                 content,
                 title,
             };
-            let content = V::render(state, outlet).await.into();
-            V::Parent::show(state, content, title).await
+            let content = view.render(state, outlet).await.into();
+            V::Parent::show(ancestors, state, content, title).await
         }
     }
 }
@@ -99,20 +155,31 @@ pub trait Views<S> {
     /// Answers GET requests to the view's path with the whole document: the
     /// view in its parent's outlet, and so on up to the root view.
     ///
+    /// The view and its ancestors are read from the request's URL first. If
+    /// one of them cannot be, because a parameter or the query string does not
+    /// parse into its fields, the answer is `400 Bad Request` and no view
+    /// renders.
+    ///
     /// # Panics
     ///
-    /// If the path already answers GET requests.
+    /// If the path already answers GET requests, or has a parameter that no
+    /// field of the view fills.
     fn view<V: View<State = S>>(self) -> Self;
 }
 
 impl<S: Clone + Send + Sync + 'static> Views<S> for Router<S> {
     fn view<V: View<State = S>>(self) -> Self {
+        url::check::<V>(&V::path());
         self.route(
             &V::path(),
-            get(|State(state): State<S>| async move {
-                let document = V::show(&state, Html::default(), V::TITLE).await;
-                axum::response::Html(String::from(document))
-            }),
+            get(
+                |State(state): State<S>, parameters: RawPathParams, RawQuery(query): RawQuery| async move {
+                    let views = V::parse(&url::fields(&parameters, query.as_deref()))
+                        .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
+                    let document = V::show(&views, &state, Html::default(), V::TITLE).await;
+                    Ok::<_, (StatusCode, String)>(axum::response::Html(String::from(document)))
+                },
+            ),
         )
     }
 }

@@ -7,6 +7,7 @@
 )]
 
 mod html;
+mod url;
 mod view;
 
 pub use html::Html;
