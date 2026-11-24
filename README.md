@@ -2,7 +2,7 @@
 
 Server-rendered Rust web apps with [htmx](https://htmx.org) and [axum](https://github.com/tokio-rs/axum), built on how the web already works: every URL names a resource, the server answers with HTML, and links and forms are the only way to move.
 
-**Status: early. Nested views are served as whole documents, and a view's fields are parsed from its URL and printed back as one; the rest of the design is written down, not built.**
+**Status: early. Views nest to any depth and are served as whole documents, and a view's fields are parsed from its URL and printed back as one; the rest of the design is written down, not built.**
 
 ```rust
 use axum::Router;
@@ -67,20 +67,47 @@ impl View for Catalog {
     const PATH: &'static str = "/catalogs/{id}";
     const TITLE: &'static str = "Catalog";
 
+    async fn render(&self, _: &App, outlet: Outlet) -> impl Into<Html> {
+        html! {
+            h1 { "Catalog " (self.id) }
+            a href=(Items { id: self.id }.url()) { "Its items" }
+            section id=(outlet.id) { (outlet.content) }
+        }
+    }
+}
+
+/// What `/catalogs/7/items` shows, in the outlet of the catalog's view: a view
+/// names the view it is nested in, and its path follows that one's.
+#[derive(Serialize, Deserialize)]
+struct Items {
+    /// The `{id}` of its parent's part of the path.
+    id: u32,
+}
+
+impl View for Items {
+    type State = App;
+    type Parent = Catalog;
+    const PATH: &'static str = "/items";
+    const TITLE: &'static str = "Items";
+
     async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
-        html! { h1 { "Catalog " (self.id) } }
+        html! { h2 { "The items of catalog " (self.id) } }
     }
 }
 
 let router: Router = Router::new()
     .view::<Catalogs>()
     .view::<Catalog>()
+    .view::<Items>()
     .with_state(App);
 
 assert_eq!(Catalog { id: 7, q: None }.url(), "/catalogs/7");
+assert_eq!(Items { id: 7 }.url(), "/catalogs/7/items");
 ```
 
 A view derives serde's `Serialize` and `Deserialize`: that is how its fields are read from a URL and printed back. A URL that does not parse into the fields, such as `/catalogs/seven`, is answered with `400 Bad Request` and no view runs.
+
+Nesting is declared, never read from the path: `/catalogs/7` extends `/catalogs`, and is still shown beside it in the root view's outlet, because `Catalog` names `Document` as its parent. A nested view holds a field for every parameter of its whole path, its ancestors' included (the `id` of `Items`); one that does not is an error when it is registered. An outlet's id follows its view's depth (`outlet-0`, `outlet-1`, …) unless the view names one: `const OUTLET: Option<&'static str> = Some("catalog");`.
 
 ## REST, as it was meant
 
@@ -129,7 +156,7 @@ pnpm test
 
 ## Planned
 
-- Views nested to any depth, served from one axum router
+- The server sending only the outlet a request names
 - Forms
 - Regions: parts of a page refreshed on their own
 - File-system routing
