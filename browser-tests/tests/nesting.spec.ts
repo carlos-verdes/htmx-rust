@@ -1,11 +1,11 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// A catalog's view holds nested views with addresses of their own: its tags and
-// its items, and inside the items the one item the address names. Each address
-// shows its view inside every view around it, however the reader got there.
-// Each scenario runs with and without JavaScript.
+// A catalog's view holds nested views with addresses of their own: its tabs,
+// the tags and the items, and inside the items the one item the address names.
+// Each address shows its view inside every view around it, however the reader
+// got there. Each scenario runs with and without JavaScript.
 
-/** The catalog's view is shown, once, in the root view's outlet. */
+/** The catalog's view is shown, once, in the root view's outlet, with its tabs. */
 function catalog(page: Page, name: string) {
   const outlet = page.locator('#outlet-0');
   return {
@@ -13,6 +13,7 @@ function catalog(page: Page, name: string) {
     async expectShown() {
       await expect(outlet).toHaveCount(1);
       await expect(outlet.getByRole('heading', { level: 1 })).toHaveText(name);
+      await expect(outlet.getByRole('navigation').getByRole('link')).toHaveText(['Items', 'Tags']);
     },
   };
 }
@@ -52,7 +53,7 @@ test('a nested view opened at its address, and refreshed, is shown inside its pa
   await expectTags(page);
 });
 
-test('a view at depth three opened at its address, and refreshed, is shown inside both views around it', async ({
+test('a view four views deep opened at its address, and refreshed, is shown inside every view around it', async ({
   page,
 }) => {
   await page.goto('/catalogs/2/items/Iced%20oolong');
@@ -89,6 +90,10 @@ test('links between nested views change the address and what is shown inside the
 
   await page.goBack();
   await expectItems(page, '/catalogs/2/items/Cold%20brew%20green', 'Item', 'Cold brew green');
+
+  // The item links to the view around it: the same items, with none shown.
+  await page.getByRole('link', { name: 'Close' }).click();
+  await expectItems(page, '/catalogs/2/items', 'Items');
 
   // The tags take the place of the items, in the same catalog.
   await page.getByRole('link', { name: 'Tags' }).click();

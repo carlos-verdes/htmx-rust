@@ -8,7 +8,7 @@ use std::{
 
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::{self, State},
     http::{
         StatusCode,
         header::{CONTENT_TYPE, LOCATION},
@@ -16,7 +16,7 @@ use axum::{
     response::{IntoResponse, Redirect},
     routing::{get, post},
 };
-use htmx_rust::{Html, NoParent, Outlet, View, Views};
+use htmx_rust::{Html, NoParent, Outlet, Path, View, Views};
 use maud::{DOCTYPE, html};
 use serde::{Deserialize, Serialize};
 
@@ -87,15 +87,16 @@ impl Default for Store {
 
 type App = Arc<Mutex<Store>>;
 
-/// The root view: the document, with the navigation around its outlet.
-#[derive(Serialize, Deserialize)]
+/// The root view: the document, with the navigation around its outlet. It
+/// carries nothing, so a path that starts below it does not name it.
+#[derive(Default, Serialize, Deserialize)]
 struct Document;
 
 impl View for Document {
     type State = App;
     type Parent = NoParent;
 
-    async fn render(&self, _: &App, outlet: Outlet) -> impl Into<Html> {
+    async fn render(_: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
         let target = format!("#{}", outlet.id);
         html! {
             (DOCTYPE)
@@ -119,9 +120,9 @@ impl View for Document {
                     hx-swap:inherited="outerHTML"
                 {
                     nav {
-                        a href=(Home.url()) { "Home" }
+                        a href=(Home.path()) { "Home" }
                         " "
-                        a href=(Catalogs::default().url()) { "Catalogs" }
+                        a href=(Catalogs::default().path()) { "Catalogs" }
                     }
                     main id=(outlet.id) { (outlet.content) }
                 }
@@ -139,12 +140,12 @@ impl View for Home {
     const PATH: &'static str = "/";
     const TITLE: &'static str = "Home";
 
-    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(_: &Path<Self>, _: &App, _: Outlet) -> impl Into<Html> {
         html! {
             h1 { "Home" }
             p { "Every address here shows the same thing on a click and on a refresh." }
-            p { a href=(Catalogs::default().url()) { "See the catalogs" } }
-            form method="post" action=(Catalogs::default().url()) {
+            p { a href=(Catalogs::default().path()) { "See the catalogs" } }
+            form method="post" action=(Catalogs::default().path()) {
                 button { "Start a catalog" }
             }
         }
@@ -170,15 +171,15 @@ impl View for Catalogs {
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
-        let q = self.q.to_lowercase();
+    async fn render(at: &Path<Self>, app: &App, _: Outlet) -> impl Into<Html> {
+        let q = at.q.to_lowercase();
         let store = app.lock().unwrap();
         let found = store
             .catalogs
             .iter()
             .filter(|catalog| catalog.name.to_lowercase().contains(&q))
             .filter(|catalog| {
-                self.tag
+                at.tag
                     .iter()
                     .all(|tag| catalog.tags.contains(&tag.as_str()))
             });
@@ -186,13 +187,13 @@ impl View for Catalogs {
             h1 { "Catalogs" }
             // A GET form is a link whose query string comes from its fields:
             // each is named after a field of the view at its address.
-            form action=(Catalogs::default().url()) {
-                label { "Name " input type="search" name="q" value=(self.q); }
+            form action=(Catalogs::default().path()) {
+                label { "Name " input type="search" name="q" value=(at.q); }
                 " "
                 @for tag in TAGS {
                     label {
                         input type="checkbox" name="tag" value=(tag)
-                            checked[self.tag.iter().any(|checked| checked == tag)];
+                            checked[at.tag.iter().any(|checked| checked == tag)];
                         " " (tag)
                     }
                     " "
@@ -202,7 +203,7 @@ impl View for Catalogs {
             ul {
                 @for Record { id, name, .. } in found {
                     li {
-                        a href=(Catalog { id: *id }.url()) { (name) }
+                        a href=(Catalog { catalog_id: *id }.path().to(Tabs)) { (name) }
                         " "
                         form method="post" action={ "/catalogs/" (id) "/remove" } {
                             button { "Remove " (name) }
@@ -210,7 +211,7 @@ impl View for Catalogs {
                     }
                 }
             }
-            p { a href=(Home.url()) { "Back home" } }
+            p { a href=(Home.path()) { "Back home" } }
         }
     }
 }
@@ -220,58 +221,74 @@ impl View for Catalogs {
 /// extends the collection's: the path says nothing about nesting.
 #[derive(Serialize, Deserialize)]
 struct Catalog {
-    id: u32,
+    catalog_id: u32,
 }
 
 impl View for Catalog {
     type State = App;
     type Parent = Document;
-    const PATH: &'static str = "/catalogs/{id}";
-    const TITLE: &'static str = "Catalog";
+    const PATH: &'static str = "/catalogs/{catalog_id}";
 
-    async fn render(&self, app: &App, outlet: Outlet) -> impl Into<Html> {
-        let Self { id } = *self;
+    async fn render(at: &Path<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
         html! {
-            @match store.catalog(id) {
+            @match store.catalog(at.catalog_id) {
                 Some(catalog) => {
                     h1 { (catalog.name) }
-                    nav {
-                        a href=(Items { id }.url()) { "Items" }
-                        " "
-                        a href=(Tags { id }.url()) { "Tags" }
-                    }
-                    section id=(outlet.id) { (outlet.content) }
+                    div id=(outlet.id) { (outlet.content) }
                 }
                 // A missing resource is not yet a failure (ADR 4).
-                None => p { "There is no catalog " (id) "." },
+                None => p { "There is no catalog " (at.catalog_id) "." },
             }
-            p { a href=(Catalogs::default().url()) { "All catalogs" } }
+            p { a href=(Catalogs::default().path()) { "All catalogs" } }
         }
     }
 }
 
-/// A catalog's tags, nested in the catalog: `/catalogs/{id}/tags`. Its `id` is
-/// its parent's parameter, which it holds to load its own data and to print
-/// its own URL.
+/// The tabs of a catalog: a view with no part of the path of its own, there
+/// only to draw the links to the views nested in it, around its outlet. It is
+/// the view at a catalog's address, which is its own: `/catalogs/{catalog_id}`.
+///
+/// A link to a tab is the path of that tab below the one this view is shown
+/// at, so it is in the catalog the address names.
 #[derive(Serialize, Deserialize)]
-struct Tags {
-    id: u32,
+struct Tabs;
+
+impl View for Tabs {
+    type State = App;
+    type Parent = Catalog;
+    const TITLE: &'static str = "Catalog";
+
+    async fn render(at: &Path<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
+        html! {
+            nav {
+                a href=(at.to(Items)) { "Items" }
+                " "
+                a href=(at.to(Tags)) { "Tags" }
+            }
+            section id=(outlet.id) { (outlet.content) }
+        }
+    }
 }
+
+/// A catalog's tags, a tab: `/catalogs/{catalog_id}/tags`. It holds nothing:
+/// the catalog it is in is two views above it, in the path it is shown at.
+#[derive(Serialize, Deserialize)]
+struct Tags;
 
 impl View for Tags {
     type State = App;
-    type Parent = Catalog;
+    type Parent = Tabs;
     const PATH: &'static str = "/tags";
     const TITLE: &'static str = "Tags";
 
-    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &Path<Self>, app: &App, _: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
-        let tags = store.catalog(self.id).map(|catalog| &catalog.tags);
+        let catalog = store.catalog(at.parent().parent().catalog_id);
         html! {
             h2 { "Tags" }
             ul {
-                @for tag in tags.into_iter().flatten() {
+                @for tag in catalog.into_iter().flat_map(|catalog| &catalog.tags) {
                     li { (tag) }
                 }
             }
@@ -279,29 +296,26 @@ impl View for Tags {
     }
 }
 
-/// A catalog's items, nested in the catalog: `/catalogs/{id}/items`. The one
+/// A catalog's items, the other tab: `/catalogs/{catalog_id}/items`. The one
 /// the URL names is shown in its outlet, whose id it chooses itself.
 #[derive(Serialize, Deserialize)]
-struct Items {
-    id: u32,
-}
+struct Items;
 
 impl View for Items {
     type State = App;
-    type Parent = Catalog;
+    type Parent = Tabs;
     const PATH: &'static str = "/items";
     const TITLE: &'static str = "Items";
     const OUTLET: Option<&'static str> = Some("item");
 
-    async fn render(&self, app: &App, outlet: Outlet) -> impl Into<Html> {
-        let Self { id } = *self;
+    async fn render(at: &Path<Self>, app: &App, outlet: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
-        let items = store.catalog(id).map(|catalog| &catalog.items);
+        let catalog = store.catalog(at.parent().parent().catalog_id);
         html! {
             h2 { "Items" }
             ul {
-                @for &item in items.into_iter().flatten() {
-                    li { a href=(Item { id, item: item.into() }.url()) { (item) } }
+                @for &item in catalog.into_iter().flat_map(|catalog| &catalog.items) {
+                    li { a href=(at.to(Item { item: item.into() })) { (item) } }
                 }
             }
             div id=(outlet.id) { (outlet.content) }
@@ -309,11 +323,10 @@ impl View for Items {
     }
 }
 
-/// One item of a catalog, nested in the catalog's items at depth three:
-/// `/catalogs/{id}/items/{item}`.
+/// One item of a catalog, nested in the catalog's items, four views below the
+/// root view: `/catalogs/{catalog_id}/items/{item}`. Its only field is its own.
 #[derive(Serialize, Deserialize)]
 struct Item {
-    id: u32,
     item: String,
 }
 
@@ -323,18 +336,20 @@ impl View for Item {
     const PATH: &'static str = "/{item}";
     const TITLE: &'static str = "Item";
 
-    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
+    async fn render(at: &Path<Self>, app: &App, _: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
         let catalog = store
-            .catalog(self.id)
-            .filter(|catalog| catalog.items.contains(&self.item.as_str()));
+            .catalog(at.parent().parent().parent().catalog_id)
+            .filter(|catalog| catalog.items.contains(&at.item.as_str()));
         html! {
             @match catalog {
                 Some(catalog) => {
-                    h3 { (self.item) }
+                    h3 { (at.item) }
                     p { "One of the items of " (catalog.name) "." }
+                    // The view around this one, without an item.
+                    p { a href=(at.parent()) { "Close" } }
                 }
-                None => p { "There is no item " (self.item) " here." },
+                None => p { "There is no item " (at.item) " here." },
             }
         }
     }
@@ -355,24 +370,26 @@ async fn start_catalog(State(app): State<App>) -> impl IntoResponse {
             tags: Vec::new(),
             items: Vec::new(),
         });
-        (Catalog { id }, name)
+        (Catalog { catalog_id: id }.path().to(Tabs), name)
     };
     let outlet = Outlet {
         id: "outlet-0".into(),
         content: html! {
             h1 { "Catalog created" }
             p { strong { (name) } " is among the catalogs now." }
-            p { a href=(catalog.url()) { "View " (name) } }
-            p { a href=(Catalogs::default().url()) { "See the catalogs" } }
+            p { a href=(catalog) { "View " (name) } }
+            p { a href=(Catalogs::default().path()) { "See the catalogs" } }
         }
         .into(),
         title: "Catalog created",
     };
-    let document: Html = Document.render(&app, outlet).await.into();
+    let document: Html = Document::render(&Document.path(), &app, outlet)
+        .await
+        .into();
     (
         StatusCode::CREATED,
         [
-            (LOCATION, catalog.url()),
+            (LOCATION, catalog.to_string()),
             (CONTENT_TYPE, "text/html; charset=utf-8".into()),
         ],
         document.as_str().to_owned(),
@@ -380,12 +397,12 @@ async fn start_catalog(State(app): State<App>) -> impl IntoResponse {
 }
 
 /// Removes a catalog and answers `303 See Other` to the collection.
-async fn remove_catalog(State(app): State<App>, Path(id): Path<u32>) -> Redirect {
+async fn remove_catalog(State(app): State<App>, extract::Path(id): extract::Path<u32>) -> Redirect {
     app.lock()
         .unwrap()
         .catalogs
         .retain(|catalog| catalog.id != id);
-    Redirect::to(&Catalogs::default().url())
+    Redirect::to(&Catalogs::default().path().to_string())
 }
 
 #[tokio::main]
@@ -397,7 +414,8 @@ async fn main() {
     let router = Router::new()
         .view::<Home>()
         .view::<Catalogs>()
-        .view::<Catalog>()
+        // A catalog's address shows its tabs, with none of them open.
+        .view::<Tabs>()
         .view::<Tags>()
         .view::<Items>()
         .view::<Item>()
