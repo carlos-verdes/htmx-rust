@@ -1,10 +1,14 @@
 //! The demo app: what htmx-rust does, in unstyled HTML. The browser suite in
 //! `browser-tests` runs against it.
 
-use std::{env, fs};
+use std::{
+    env, fs,
+    sync::{Arc, Mutex},
+};
 
 use axum::{
     Router,
+    extract::{Path, State},
     http::{
         StatusCode,
         header::{CONTENT_TYPE, LOCATION},
@@ -22,23 +26,40 @@ const HTMX: &str = concat!(
     "/node_modules/htmx.org/dist/htmx.min.js"
 );
 
-/// The catalogs there are, each with its id. Nothing is stored yet.
-const CATALOGS: [(u32, &str); 4] = [
-    (1, "Spring teas"),
-    (2, "Summer teas"),
-    (3, "Autumn coffees"),
-    (4, "Winter coffees"),
-];
+/// What the app keeps, in memory: the catalogs, each with its id and its name.
+struct Store {
+    /// How many catalogs were ever started; the next one's id follows from it.
+    started: u32,
+    catalogs: Vec<(u32, String)>,
+}
+
+/// The catalogs the demo starts with.
+impl Default for Store {
+    fn default() -> Self {
+        let names = [
+            "Spring teas",
+            "Summer teas",
+            "Autumn coffees",
+            "Winter coffees",
+        ];
+        Self {
+            started: names.len() as u32,
+            catalogs: (1..).zip(names.map(String::from)).collect(),
+        }
+    }
+}
+
+type App = Arc<Mutex<Store>>;
 
 /// The root view: the document, with the navigation around its outlet.
 #[derive(Serialize, Deserialize)]
 struct Document;
 
 impl View for Document {
-    type State = ();
+    type State = App;
     type Parent = NoParent;
 
-    async fn render(&self, _: &(), outlet: Outlet) -> impl Into<Html> {
+    async fn render(&self, _: &App, outlet: Outlet) -> impl Into<Html> {
         let target = format!("#{}", outlet.id);
         html! {
             (DOCTYPE)
@@ -77,21 +98,18 @@ impl View for Document {
 struct Home;
 
 impl View for Home {
-    type State = ();
+    type State = App;
     type Parent = Document;
     const PATH: &'static str = "/";
     const TITLE: &'static str = "Home";
 
-    async fn render(&self, _: &(), _: Outlet) -> impl Into<Html> {
+    async fn render(&self, _: &App, _: Outlet) -> impl Into<Html> {
         html! {
             h1 { "Home" }
             p { "Every address here shows the same thing on a click and on a refresh." }
             p { a href=(Catalogs::default().url()) { "See the catalogs" } }
             form method="post" action=(Catalogs::default().url()) {
                 button { "Start a catalog" }
-            }
-            form method="post" action="/catalogs/clear" {
-                button { "Clear the catalogs" }
             }
         }
     }
@@ -106,14 +124,16 @@ struct Catalogs {
 }
 
 impl View for Catalogs {
-    type State = ();
+    type State = App;
     type Parent = Document;
     const PATH: &'static str = "/catalogs";
     const TITLE: &'static str = "Catalogs";
 
-    async fn render(&self, _: &(), _: Outlet) -> impl Into<Html> {
+    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
         let q = self.q.to_lowercase();
-        let found = CATALOGS
+        let store = app.lock().unwrap();
+        let found = store
+            .catalogs
             .iter()
             .filter(|(_, name)| name.to_lowercase().contains(&q));
         html! {
@@ -126,8 +146,14 @@ impl View for Catalogs {
                 button { "Search" }
             }
             ul {
-                @for &(id, name) in found {
-                    li { a href=(Catalog { id }.url()) { (name) } }
+                @for (id, name) in found {
+                    li {
+                        a href=(Catalog { id: *id }.url()) { (name) }
+                        " "
+                        form method="post" action={ "/catalogs/" (id) "/remove" } {
+                            button { "Remove " (name) }
+                        }
+                    }
                 }
             }
             p { a href=(Home.url()) { "Back home" } }
@@ -142,13 +168,14 @@ struct Catalog {
 }
 
 impl View for Catalog {
-    type State = ();
+    type State = App;
     type Parent = Document;
     const PATH: &'static str = "/catalogs/{id}";
     const TITLE: &'static str = "Catalog";
 
-    async fn render(&self, _: &(), _: Outlet) -> impl Into<Html> {
-        let name = CATALOGS.iter().find(|(id, _)| *id == self.id);
+    async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
+        let store = app.lock().unwrap();
+        let name = store.catalogs.iter().find(|(id, _)| *id == self.id);
         html! {
             @match name {
                 Some((_, name)) => h1 { (name) },
@@ -160,29 +187,47 @@ impl View for Catalog {
     }
 }
 
-/// Answers `201 Created` with the whole document around a message. Actions
-/// will draw their answer in place themselves; until then the root view is
-/// rendered by hand, and `Location` names the collection because nothing is
-/// stored yet.
-async fn create_catalog() -> impl IntoResponse {
+/// Starts a catalog and answers `201 Created` with the whole document around
+/// a message that links to it. Actions will draw their answer in place
+/// themselves; until then the root view is rendered by hand.
+async fn start_catalog(State(app): State<App>) -> impl IntoResponse {
+    let (catalog, name) = {
+        let mut store = app.lock().unwrap();
+        store.started += 1;
+        let id = store.started;
+        let name = format!("Catalog {id}");
+        store.catalogs.push((id, name.clone()));
+        (Catalog { id }, name)
+    };
     let outlet = Outlet {
         id: "outlet-0".into(),
         content: html! {
             h1 { "Catalog created" }
+            p { strong { (name) } " is among the catalogs now." }
+            p { a href=(catalog.url()) { "View " (name) } }
             p { a href=(Catalogs::default().url()) { "See the catalogs" } }
         }
         .into(),
         title: "Catalog created",
     };
-    let document: Html = Document.render(&(), outlet).await.into();
+    let document: Html = Document.render(&app, outlet).await.into();
     (
         StatusCode::CREATED,
         [
-            (LOCATION, Catalogs::default().url()),
+            (LOCATION, catalog.url()),
             (CONTENT_TYPE, "text/html; charset=utf-8".into()),
         ],
         document.as_str().to_owned(),
     )
+}
+
+/// Removes a catalog and answers `303 See Other` to the collection.
+async fn remove_catalog(State(app): State<App>, Path(id): Path<u32>) -> Redirect {
+    app.lock()
+        .unwrap()
+        .catalogs
+        .retain(|(other, _)| *other != id);
+    Redirect::to(&Catalogs::default().url())
 }
 
 #[tokio::main]
@@ -195,16 +240,14 @@ async fn main() {
         .view::<Home>()
         .view::<Catalogs>()
         .view::<Catalog>()
-        // Ordinary axum routes, beside the views. Nothing is stored yet.
-        .route("/catalogs", post(create_catalog))
-        .route(
-            "/catalogs/clear",
-            post(|| async { Redirect::to(&Catalogs::default().url()) }),
-        )
+        // Ordinary axum routes, beside the views.
+        .route("/catalogs", post(start_catalog))
+        .route("/catalogs/{id}/remove", post(remove_catalog))
         .route(
             "/htmx.js",
             get(|| async move { ([(CONTENT_TYPE, "text/javascript")], htmx) }),
-        );
+        )
+        .with_state(App::default());
 
     let port = env::var("PORT").unwrap_or_else(|_| "3000".into());
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{port}"))
