@@ -3,6 +3,7 @@ use std::future::Future;
 use axum::{Router, extract::State, routing::get};
 
 use crate::Html;
+use chain::Chain;
 
 /// What one URL path shows, nested in its [`Parent`](View::Parent).
 pub trait View: 'static {
@@ -29,47 +30,56 @@ pub trait View: 'static {
 pub struct NoParent;
 
 /// What a view names as its parent: a [`View`] with the same state, or
-/// [`NoParent`].
-pub trait Parent<S> {
-    /// How many views there are from the root view down to this one.
-    #[doc(hidden)]
-    const DEPTH: usize;
+/// [`NoParent`]. Nothing else can be one.
+pub trait Parent<S>: chain::Chain<S> {}
 
-    #[doc(hidden)]
-    fn path() -> String;
+impl<S: Sync> Parent<S> for NoParent {}
 
-    /// Renders this view around `content`, and its ancestors around it.
-    #[doc(hidden)]
-    fn show(state: &S, content: Html, title: &'static str) -> impl Future<Output = Html> + Send;
-}
+impl<V: View> Parent<V::State> for V {}
 
-impl<S: Sync> Parent<S> for NoParent {
-    const DEPTH: usize = 0;
+/// Private, so that only this crate decides what a [`Parent`] is.
+mod chain {
+    use super::*;
 
-    fn path() -> String {
-        String::new()
+    pub trait Chain<S> {
+        /// How many views there are from the root view down to this one.
+        const DEPTH: usize;
+
+        fn path() -> String;
+
+        /// Renders this view around `content`, and its ancestors around it.
+        fn show(state: &S, content: Html, title: &'static str)
+        -> impl Future<Output = Html> + Send;
     }
 
-    async fn show(_: &S, content: Html, _: &'static str) -> Html {
-        content
+    impl<S: Sync> Chain<S> for NoParent {
+        const DEPTH: usize = 0;
+
+        fn path() -> String {
+            String::new()
+        }
+
+        async fn show(_: &S, content: Html, _: &'static str) -> Html {
+            content
+        }
     }
-}
 
-impl<V: View> Parent<V::State> for V {
-    const DEPTH: usize = V::Parent::DEPTH + 1;
+    impl<V: View> Chain<V::State> for V {
+        const DEPTH: usize = V::Parent::DEPTH + 1;
 
-    fn path() -> String {
-        V::Parent::path() + V::PATH
-    }
+        fn path() -> String {
+            V::Parent::path() + V::PATH
+        }
 
-    async fn show(state: &V::State, content: Html, title: &'static str) -> Html {
-        let outlet = Outlet {
-            id: format!("outlet-{}", V::Parent::DEPTH),
-            content,
-            title,
-        };
-        let content = V::render(state, outlet).await.into();
-        V::Parent::show(state, content, title).await
+        async fn show(state: &V::State, content: Html, title: &'static str) -> Html {
+            let outlet = Outlet {
+                id: format!("outlet-{}", V::Parent::DEPTH),
+                content,
+                title,
+            };
+            let content = V::render(state, outlet).await.into();
+            V::Parent::show(state, content, title).await
+        }
     }
 }
 
