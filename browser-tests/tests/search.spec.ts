@@ -79,3 +79,26 @@ test('a result links to its resource, at an address that can be refreshed', asyn
   await page.goBack();
   await expectCatalogs(page, '/catalogs?q=coffee', 'coffee', ['Autumn coffees', 'Winter coffees']);
 });
+
+test('checked tags are a list in the address, and a refresh shows the same results', async ({
+  page,
+}) => {
+  await page.goto('/catalogs');
+
+  await page.getByRole('checkbox', { name: 'tea' }).check();
+  await page.getByRole('checkbox', { name: 'iced' }).check();
+  await page.getByRole('button', { name: 'Search' }).click();
+
+  // The field's name is repeated, once for each tag.
+  await expectCatalogs(page, '/catalogs?q=&tag=tea&tag=iced', '', ['Summer teas']);
+  await page.reload();
+  await expectCatalogs(page, '/catalogs?q=&tag=tea&tag=iced', '', ['Summer teas']);
+  await expect(page.getByRole('checkbox', { name: 'tea' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'iced' })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'hot' })).not.toBeChecked();
+
+  // One tag fewer is another address, with more catalogs.
+  await page.getByRole('checkbox', { name: 'tea' }).uncheck();
+  await page.getByRole('button', { name: 'Search' }).click();
+  await expectCatalogs(page, '/catalogs?q=&tag=iced', '', ['Summer teas', 'Autumn coffees']);
+});

@@ -26,25 +26,41 @@ const HTMX: &str = concat!(
     "/node_modules/htmx.org/dist/htmx.min.js"
 );
 
-/// What the app keeps, in memory: the catalogs, each with its id and its name.
+/// The tags a catalog can carry.
+const TAGS: [&str; 4] = ["tea", "coffee", "hot", "iced"];
+
+struct Record {
+    id: u32,
+    name: String,
+    tags: Vec<&'static str>,
+}
+
+/// What the app keeps, in memory: the catalogs.
 struct Store {
     /// How many catalogs were ever started; the next one's id follows from it.
     started: u32,
-    catalogs: Vec<(u32, String)>,
+    catalogs: Vec<Record>,
 }
 
 /// The catalogs the demo starts with.
 impl Default for Store {
     fn default() -> Self {
-        let names = [
-            "Spring teas",
-            "Summer teas",
-            "Autumn coffees",
-            "Winter coffees",
+        let catalogs = [
+            ("Spring teas", ["tea", "hot"]),
+            ("Summer teas", ["tea", "iced"]),
+            ("Autumn coffees", ["coffee", "iced"]),
+            ("Winter coffees", ["coffee", "hot"]),
         ];
         Self {
-            started: names.len() as u32,
-            catalogs: (1..).zip(names.map(String::from)).collect(),
+            started: catalogs.len() as u32,
+            catalogs: (1..)
+                .zip(catalogs)
+                .map(|(id, (name, tags))| Record {
+                    id,
+                    name: name.into(),
+                    tags: tags.into(),
+                })
+                .collect(),
         }
     }
 }
@@ -116,11 +132,16 @@ impl View for Home {
 }
 
 /// The collection: every catalog, or those the search in its URL finds.
+/// `/catalogs?q=tea&tag=hot&tag=iced` is a search like any other address.
 #[derive(Default, Serialize, Deserialize)]
 struct Catalogs {
     /// What a catalog's name must contain. `/catalogs` searches for nothing.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     q: String,
+    /// The tags a catalog must carry, all of them. The query string repeats
+    /// the name, once for each.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    tag: Vec<String>,
 }
 
 impl View for Catalogs {
@@ -135,7 +156,12 @@ impl View for Catalogs {
         let found = store
             .catalogs
             .iter()
-            .filter(|(_, name)| name.to_lowercase().contains(&q));
+            .filter(|catalog| catalog.name.to_lowercase().contains(&q))
+            .filter(|catalog| {
+                self.tag
+                    .iter()
+                    .all(|tag| catalog.tags.contains(&tag.as_str()))
+            });
         html! {
             h1 { "Catalogs" }
             // A GET form is a link whose query string comes from its fields:
@@ -143,10 +169,18 @@ impl View for Catalogs {
             form action=(Catalogs::default().url()) {
                 label { "Name " input type="search" name="q" value=(self.q); }
                 " "
+                @for tag in TAGS {
+                    label {
+                        input type="checkbox" name="tag" value=(tag)
+                            checked[self.tag.iter().any(|checked| checked == tag)];
+                        " " (tag)
+                    }
+                    " "
+                }
                 button { "Search" }
             }
             ul {
-                @for (id, name) in found {
+                @for Record { id, name, .. } in found {
                     li {
                         a href=(Catalog { id: *id }.url()) { (name) }
                         " "
@@ -175,10 +209,10 @@ impl View for Catalog {
 
     async fn render(&self, app: &App, _: Outlet) -> impl Into<Html> {
         let store = app.lock().unwrap();
-        let name = store.catalogs.iter().find(|(id, _)| *id == self.id);
+        let catalog = store.catalogs.iter().find(|catalog| catalog.id == self.id);
         html! {
-            @match name {
-                Some((_, name)) => h1 { (name) },
+            @match catalog {
+                Some(catalog) => h1 { (catalog.name) },
                 // A missing resource is not yet a failure (ADR 4).
                 None => p { "There is no catalog " (self.id) "." },
             }
@@ -196,7 +230,11 @@ async fn start_catalog(State(app): State<App>) -> impl IntoResponse {
         store.started += 1;
         let id = store.started;
         let name = format!("Catalog {id}");
-        store.catalogs.push((id, name.clone()));
+        store.catalogs.push(Record {
+            id,
+            name: name.clone(),
+            tags: Vec::new(),
+        });
         (Catalog { id }, name)
     };
     let outlet = Outlet {
@@ -226,7 +264,7 @@ async fn remove_catalog(State(app): State<App>, Path(id): Path<u32>) -> Redirect
     app.lock()
         .unwrap()
         .catalogs
-        .retain(|(other, _)| *other != id);
+        .retain(|catalog| catalog.id != id);
     Redirect::to(&Catalogs::default().url())
 }
 
