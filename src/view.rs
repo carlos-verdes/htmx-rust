@@ -271,13 +271,11 @@ mod chain {
         fn print(at: &Self::ViewPath, path: &mut String, query: &mut Serializer<'_, String>);
 
         /// Renders this view around `content`, and its ancestors around it.
-        /// `shown` is the path of the view the content is of.
         fn show(
             at: &Self::ViewPath,
             state: &S,
             content: Html,
             title: &'static str,
-            shown: Option<String>,
         ) -> impl Future<Output = Html> + Send;
     }
 
@@ -301,13 +299,7 @@ mod chain {
 
         fn print(_: &NoParent, _: &mut String, _: &mut Serializer<'_, String>) {}
 
-        async fn show(
-            _: &NoParent,
-            _: &S,
-            content: Html,
-            _: &'static str,
-            _: Option<String>,
-        ) -> Html {
+        async fn show(_: &NoParent, _: &S, content: Html, _: &'static str) -> Html {
             content
         }
     }
@@ -366,16 +358,14 @@ mod chain {
             state: &V::State,
             content: Html,
             title: &'static str,
-            shown: Option<String>,
         ) -> Html {
             let outlet = Outlet {
                 id: outlet::<V>(),
                 content,
                 title,
-                shown,
             };
             let content = V::render(at, state, outlet).await.into();
-            V::Parent::show(&at.0.1, state, content, title, Some(at.print().0)).await
+            V::Parent::show(&at.0.1, state, content, title).await
         }
     }
 }
@@ -389,30 +379,6 @@ pub struct Outlet {
     pub content: Html,
     /// The title of the view the URL names: the innermost one.
     pub title: &'static str,
-    /// The path of the nested view, without its query string.
-    shown: Option<String>,
-}
-
-impl Outlet {
-    /// An outlet as the library hands one to a view, with nothing nested known
-    /// to be [shown](Outlet::shows) in it.
-    pub fn new(id: impl Into<String>, content: Html, title: &'static str) -> Self {
-        Self {
-            id: id.into(),
-            content,
-            title,
-            shown: None,
-        }
-    }
-
-    /// Whether the view at `path` is the one shown in this outlet, as the URL
-    /// says: the view nested here, whatever is nested further in it. A view
-    /// marks with it the link to what is open, such as a tab.
-    ///
-    /// The query string plays no part: a search in the open view is still it.
-    pub fn shows<V: View>(&self, path: &ViewPath<V>) -> bool {
-        self.shown.as_deref() == Some(&path.print().0)
-    }
 }
 
 /// Registers views on an [`axum::Router`], beside its ordinary routes.
@@ -443,7 +409,7 @@ impl<S: Clone + Send + Sync + 'static> Views<S> for Router<S> {
                 |State(state): State<S>, parameters: RawPathParams, RawQuery(query): RawQuery| async move {
                     let at = V::parse(&url::fields(&parameters, query.as_deref()))
                         .map_err(|error| (StatusCode::BAD_REQUEST, error.to_string()))?;
-                    let document = V::show(&at, &state, Html::default(), V::TITLE, None).await;
+                    let document = V::show(&at, &state, Html::default(), V::TITLE).await;
                     Ok::<_, (StatusCode, String)>(axum::response::Html(String::from(document)))
                 },
             ),

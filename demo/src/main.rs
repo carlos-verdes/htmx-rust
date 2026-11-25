@@ -317,9 +317,7 @@ impl View for Items {
                 @for &item in catalog.into_iter().flat_map(|catalog| &catalog.items) {
                     @let item = at.to(Item { item: item.into() });
                     li {
-                        a href=(item) aria-current=[outlet.shows(&item).then_some("page")] {
-                            (item.item)
-                        }
+                        a href=(item) { (item.item) }
                     }
                 }
             }
@@ -403,17 +401,17 @@ async fn start_catalog(State(app): State<App>) -> impl IntoResponse {
         });
         (Catalog { catalog_id: id }.path(), name)
     };
-    let outlet = Outlet::new(
-        Document.path().outlet(),
-        html! {
+    let outlet = Outlet {
+        id: Document.path().outlet(),
+        content: html! {
             h1 { "Catalog created" }
             p { strong { (name) } " is among the catalogs now." }
             p { a href=(catalog) { "View " (name) } }
             p { a href=(Catalogs::default().path()) { "See the catalogs" } }
         }
         .into(),
-        "Catalog created",
-    );
+        title: "Catalog created",
+    };
     let document: Html = Document::render(&Document.path(), &app, outlet)
         .await
         .into();

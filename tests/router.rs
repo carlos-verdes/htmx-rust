@@ -884,13 +884,7 @@ impl View for Shelf {
     const PATH: &'static str = "/shelves/{shelf}";
 
     async fn render(at: &ViewPath<Self>, _: &App, outlet: Outlet) -> impl Into<Html> {
-        Html::trusted(format!(
-            "Shelf {:?} books={} papers={}[{}]",
-            at.shelf,
-            outlet.shows(&at.to(Books)),
-            outlet.shows(&at.to(Papers { page: 1 })),
-            outlet.content.as_str()
-        ))
+        Html::trusted(format!("Shelf {:?}[{}]", at.shelf, outlet.content.as_str()))
     }
 }
 
@@ -907,50 +901,11 @@ impl View for Books {
     }
 }
 
-/// A second view nested in [`Shelf`], with a field in the query string.
-#[derive(Serialize, Deserialize)]
-struct Papers {
-    page: u32,
-}
-
-impl View for Papers {
-    type State = App;
-    type Parent = Shelf;
-    const PATH: &'static str = "/papers";
-
-    async fn render(_: &ViewPath<Self>, _: &App, _: Outlet) -> impl Into<Html> {
-        Html::trusted("Papers")
-    }
-}
-
 fn shelves() -> Router {
     Router::new()
         .view::<Shelf>()
         .view::<Books>()
-        .view::<Papers>()
         .with_state(App { name: "Loom" })
-}
-
-#[tokio::test]
-async fn an_outlet_says_which_nested_view_is_shown_in_it() {
-    let shown = |path: &'static str| async move { body(get_path(shelves(), path).await).await };
-
-    assert!(
-        shown("/shelves/top")
-            .await
-            .contains("books=false papers=false[]")
-    );
-    assert!(
-        shown("/shelves/top/books")
-            .await
-            .contains("books=true papers=false[Books]")
-    );
-    // The view is the same one whatever its query string says.
-    assert!(
-        shown("/shelves/top/papers?page=7")
-            .await
-            .contains("books=false papers=true[Papers]")
-    );
 }
 
 #[tokio::test]
@@ -966,21 +921,13 @@ async fn a_path_whose_parameter_is_empty_is_answered_with_the_view_it_names() {
     };
 
     let named = get_path(router(), &books("top")).await;
-    assert!(
-        body(named)
-            .await
-            .contains("Shelf \"top\" books=true papers=false[Books]")
-    );
+    assert!(body(named).await.contains("Shelf \"top\"[Books]"));
 
     // The route with an empty parameter, not `/shelves/books`, which is the
     // shelf named "books".
     assert_eq!(books(""), "/shelves//books");
     let empty = get_path(router(), &books("")).await;
-    assert!(
-        body(empty)
-            .await
-            .contains("Shelf \"\" books=true papers=false[Books]")
-    );
+    assert!(body(empty).await.contains("Shelf \"\"[Books]"));
 }
 
 /// A view that hides the names of its fields from the startup checks.
